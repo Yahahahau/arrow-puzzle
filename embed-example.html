@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrow Puzzle — iframe embed example</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #eef1f6; }
+  header { padding: 16px; text-align: center; color: #2f4366; }
+  .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; padding: 0 16px 32px; }
+  figure { margin: 0; text-align: center; font-size: 13px; color: #6b7690; }
+  iframe { border: 0; display: block; background: #fff; border-radius: 12px; box-shadow: 0 6px 24px rgba(30,50,100,.2); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h2>Arrow Puzzle — ตัวอย่างการฝังผ่าน iframe</h2>
+  <p>เกมปรับขนาดตามพื้นที่ของ iframe โดยอัตโนมัติ (ลองย่อ/ขยายหน้าต่าง)</p>
+</header>
+<div class="wrap">
+  <figure>
+    <iframe src="index.html" style="width:360px;height:640px;" allow="autoplay"></iframe>
+    360 × 640 (9:16)
+  </figure>
+  <figure>
+    <iframe src="index.html" style="width:300px;height:420px;" allow="autoplay"></iframe>
+    300 × 420 (สั้นกว่า 9:16)
+  </figure>
+  <figure>
+    <iframe src="index.html" style="width:560px;height:360px;" allow="autoplay"></iframe>
+    560 × 360 (แนวนอน — ไม่บังคับหมุนจอ)
+  </figure>
+</div>
+</body>
+</html>
