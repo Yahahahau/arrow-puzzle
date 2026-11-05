@@ -8,8 +8,10 @@
  *     confetti. Because it is not clipped by the board/stage, an arrow keeps
  *     travelling in a straight line until it has left the visible area completely.
  *
- * Arrow flight: constant speed (screen px/s at launch zoom), opacity always 1,
- * time-based (rAF timestamps), so speed does not depend on the refresh rate. */
+ * Arrow flight: smooth ramp-in, constant cruise speed (screen px/s at launch zoom), gentle
+ * ease-out over the last 40% of the route, opacity always 1. The route length is measured
+ * at launch (to the real visible edge), so duration scales with distance. Time-based
+ * (rAF timestamps), so speed does not depend on the refresh rate. */
 (function (G) {
   'use strict';
   var AP = G.AP = G.AP || {};
@@ -17,9 +19,10 @@
   var INK = '#0e1650', RED = '#ef4444', ORANGE = '#f97316', BLUE = '#2f86eb', GOLD = '#ffb800', GREEN = '#22c55e';
   var LW = 0.17;                 // line width (cells)
   var HEAD_LEN = 0.46, HEAD_HALF = 0.27;
-  var SPEED_PX = 1600;           // flight speed in screen px / second (at the zoom used at launch)
-  var MIN_V = 16, MAX_V = 140;   // clamp in cells / second
-  var RAMP = 0.06;               // s: velocity-continuous start (no stop, no jump)
+  var SPEED_PX = 1400;           // cruise speed in screen px / second at launch zoom (12% slower than v1: 1600)
+  var MIN_V = 14, MAX_V = 122;   // clamp in cells / second
+  var RAMP = 0.07;               // s: smoothstep velocity ramp at the start (no jump)
+  var DEC_START = 0.6, DEC_DROP = 0.45;  // last 40% of the route eases down to 55% of cruise speed (never stops)
   var EXIT_MARGIN = 1.5;         // cells beyond the visible edge before the arrow is removed
   var BUMP_T = 0.5;
   var HINT_T = 3.6, RULER_T = 4.2;
@@ -69,6 +72,7 @@
     this.endTimer = 0; this.endKind = '';
     this.running = false; this.lastT = 0; this.raf = 0;
     this._tmp = [0, 0]; this._win = []; this._vis = [];
+    this.dm = null; this._dotsDirty = false;
     this._needBoard = true; this._prevBA = false; this._fxDirty = false; this._bumping = false;
     // developer tools
     this.dev = { grid: false, perf: false };
@@ -79,6 +83,10 @@
     this._onVis = function () { self.lastT = 0; if (!document.hidden && self.running) self._kick(); };
     document.addEventListener('visibilitychange', this._onVis);
   }
+
+  /* optional overview dot map (canvas), kept in sync with the real grid */
+  Game.prototype.attachDots = function (canvas) { this.dm = new AP.DotMap(canvas); this._dotsDirty = true; };
+  Game.prototype.resizeDots = function (w, h) { if (this.dm) { this.dm.resize(w, h, Math.min(window.devicePixelRatio || 1, 3)); this._kick(); } };
 
   Game.prototype.destroy = function () {
     this.running = false;
@@ -129,6 +137,7 @@
       if (this.board.grid[r * def.cols + c] < 0) this.dots.push(c + 0.5, r + 0.5);
     this._cs = new Uint8Array(def.cols * def.rows); this._csDirty = true;
     this.view.setBoard(def.cols, def.rows);
+    if (this.dm) { this.dm.setBoard(this.board); this._dotsDirty = false; }
     this._resetPerf();
     this._needBoard = true;
     this._emit();
@@ -205,9 +214,15 @@
     if (blId < 0) {
       b.remove(id);                              // occupancy grid updated at launch
       a.phase = 2; a.t = 0; a.s = 0;
-      a.v = clamp(SPEED_PX / this.view.scale, MIN_V, MAX_V);   // constant for the whole flight
+      var vw = this.view, sc = vw.scale, ox = vw.tx + this.fxX, oy = vw.ty + this.fxY, edge;
+      a.v = clamp(SPEED_PX / sc, MIN_V, MAX_V);                // cruise speed, fixed for the whole flight
+      if (a.dir === 'R') edge = (this.fxW - ox) / sc - a.hx;   // head -> visible edge, in cells
+      else if (a.dir === 'L') edge = a.hx + ox / sc;
+      else if (a.dir === 'D') edge = (this.fxH - oy) / sc - a.hy;
+      else edge = a.hy + oy / sc;
+      a.D = Math.max(a.L + edge, a.dEdge + a.L) + EXIT_MARGIN; // path length until the TAIL has left the screen
       this.mv.push(a);
-      this._csDirty = true; this._needBoard = true; this._fxDirty = true;
+      this._csDirty = true; this._needBoard = true; this._fxDirty = true; this._dotsDirty = true;
       if (this.hintId === id) { this.hintId = -1; this.hintT = 0; }
       if (this.cb.onSfx) this.cb.onSfx('go');
       if (b.alive === 0) { this.endKind = 'win'; this.endTimer = 0.3; }
@@ -258,7 +273,7 @@
   /* ---------- loop ---------- */
   Game.prototype._animating = function () {
     return this.mv.length > 0 || this.hintT > 0 || this.rulerT > 0 || this.parts.length > 0 ||
-      this.endTimer > 0 || this._bumping || this.view.tween !== null ||
+      this.endTimer > 0 || this._bumping || (this.dm && this.dm.active) || this.view.tween !== null ||
       this.view.vx !== 0 || this.view.vy !== 0 || this.view.dirty || this.view.ptrs.size > 0;
   };
   Game.prototype._kick = function () {
@@ -276,6 +291,11 @@
     if (this.paused) { this._renderBoard(); return; }
     if (raw) this._perf(raw);
     this._update(dt);
+    if (this.dm) {
+      if (this._dotsDirty) { this.dm.sync(this.board); this._dotsDirty = false; }
+      var dmA = this.dm.step(dt);
+      if (dmA || this._vd || this.dm.needDraw) this.dm.draw(this.view);
+    }
     var ba = this._bumping || this.hintT > 0 || this.rulerT > 0;
     if (this._vd || this._needBoard || ba || this._prevBA) { this._renderBoard(); this._needBoard = false; }
     this._prevBA = ba;
@@ -289,7 +309,7 @@
     var b = this.board; if (!b) return;
     var i, a, bumping = false;
 
-    // flying arrows: constant speed, velocity-continuous start, removed only when fully off-screen
+    // flying arrows: smooth ramp-in -> constant cruise -> gentle ease-out; removed only once fully off-screen
     if (this.mv.length) {
       var sc = v.scale, ox = v.tx + this.fxX, oy = v.ty + this.fxY;
       var x0 = -ox / sc, y0 = -oy / sc, x1 = (this.fxW - ox) / sc, y1 = (this.fxH - oy) / sc;
@@ -297,10 +317,15 @@
       for (i = this.mv.length - 1; i >= 0; i--) {
         a = this.mv[i];
         a.t += dt;
-        a.s = a.t < RAMP ? a.v * a.t * a.t / (2 * RAMP) : a.v * (a.t - RAMP * 0.5);
+        var u = a.s / a.D; if (u > 1) u = 1;
+        var dec = 1;
+        if (u > DEC_START) { var q = (u - DEC_START) / (1 - DEC_START); dec = 1 - DEC_DROP * q * q * (3 - 2 * q); }
+        var rm = 1;
+        if (a.t < RAMP) { var r0 = a.t / RAMP; rm = r0 * r0 * (3 - 2 * r0); }
+        a.s += a.v * rm * dec * dt;
         var done = false;
-        if (a.s >= a.dEdge + a.L) {                // whole arrow is on the straight run-out line
-          pointAt(a, a.s, t);                      // tail position
+        if (a.s >= a.D) {                          // planned route finished: confirm against the CURRENT view
+          pointAt(a, a.s, t);                      // tail position (on the straight run-out line)
           var m = EXIT_MARGIN;
           switch (a.dir) {
             case 'R': done = t[0] > x1 + m; break;
@@ -308,7 +333,7 @@
             case 'D': done = t[1] > y1 + m; break;
             default:  done = t[1] < y0 - m;
           }
-          if (a.s > a.dEdge + a.L + cap) done = true;   // safety net
+          if (a.s > a.D + cap) done = true;        // safety net
         }
         if (done) {
           a.phase = 3;

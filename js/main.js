@@ -22,16 +22,19 @@
     if (w <= 0 || h <= 0) return;
     var ar = app.getBoundingClientRect(), sr = stage.getBoundingClientRect();
     var W = app.clientWidth, H = app.clientHeight, ox = Math.round((sr.left - ar.left) * 100) / 100, oy = Math.round((sr.top - ar.top) * 100) / 100;
-    var key = w + 'x' + h + '|' + W + 'x' + H + '|' + ox + ',' + oy;
+    var dm = $('dotmap'), dw = dm.clientWidth, dh = dm.clientHeight;
+    var key = w + 'x' + h + '|' + W + 'x' + H + '|' + ox + ',' + oy + '|' + dw + 'x' + dh;
     if (key === game._key) return;
     var sizeChanged = w !== game._w || h !== game._h;
     game._key = key; game._w = w; game._h = h;
     if (sizeChanged) game.resize(w, h);
     game.setFx(W, H, ox, oy);
+    if (dw > 0 && dh > 0) game.resizeDots(dw, dh);
   }
 
   /* ---------- game ---------- */
-  var game = new AP.Game(canvas, fxCanvas, {
+  var game = null;
+  game = new AP.Game(canvas, fxCanvas, {
     onState: updateHud,
     onSfx: function (n) { AP.Audio.play(n); },
     onHaptic: function () { if (Store.get().vibrate && navigator.vibrate) { try { navigator.vibrate(45); } catch (e) {} } },
@@ -45,10 +48,18 @@
     onLose: function () { AP.Audio.play('lose'); setTimeout(function () { if (isGame()) show('m-lose'); }, 250); }
   });
 
+  game.attachDots($('dotmap'));
+
   function isGame() { return app.dataset.screen === 'game'; }
 
+  var lastAlive = -1;
   function updateHud(i) {
-    $('g-count').textContent = i.alive;
+    var cEl = $('g-count');
+    if (i.alive !== lastAlive) {
+      cEl.textContent = i.alive;
+      if (lastAlive >= 0 && cEl.animate) cEl.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.22)', offset: .4 }, { transform: 'scale(1)' }], { duration: 260, easing: 'cubic-bezier(.22,.8,.3,1)' });
+      lastAlive = i.alive;
+    }
     var hs = $('g-hearts').children;
     for (var k = 0; k < hs.length; k++) {
       var lost = k >= i.hearts;
@@ -68,7 +79,7 @@
     openGame(Levels.daily(key), 'คำท้าประจำวัน');
   }
   function openGame(def, title) {
-    hideAll();
+    hideAll(); lastAlive = -1;
     $('g-title').textContent = title;
     $('g-diff').textContent = def.label;
     var hs = $('g-hearts').children;
@@ -109,15 +120,20 @@
     if (name === 'profile') refreshProfile();
     if (name !== 'game') { game.cancelFx(); game.setPaused(true); }
   }
-  function show(id) { $(id).hidden = false; game.setPaused(true); }
-  function hide(id) { $(id).hidden = true; }
-  function hideAll() {
+  var OUT_MS = 240;
+  function show(id) { var m = $(id); clearTimeout(m._h); m.classList.remove('out'); m.hidden = false; game.setPaused(true); }
+  function hide(id) {                       // animated close
+    var m = $(id); if (m.hidden) return;
+    m.classList.add('out'); clearTimeout(m._h);
+    m._h = setTimeout(function () { m.hidden = true; m.classList.remove('out'); }, OUT_MS);
+  }
+  function hideAll() {                      // instant (screen / level changes)
     var m = document.querySelectorAll('.modal');
-    for (var i = 0; i < m.length; i++) m[i].hidden = true;
+    for (var i = 0; i < m.length; i++) { clearTimeout(m[i]._h); m[i].classList.remove('out'); m[i].hidden = true; }
   }
   function anyModal() {
     var m = document.querySelectorAll('.modal');
-    for (var i = 0; i < m.length; i++) if (!m[i].hidden) return true;
+    for (var i = 0; i < m.length; i++) if (!m[i].hidden && !m[i].classList.contains('out')) return true;
     return false;
   }
   function goHome() { hideAll(); setScreen('home'); }
@@ -252,6 +268,44 @@
     if (e.key === 'Escape' && isGame()) { if (!$('m-pause').hidden) actions.resume(); else if (!anyModal()) actions.pause(); }
   });
   document.addEventListener('visibilitychange', function () { if (document.hidden) AP.Audio.setEnabled(false); else AP.Audio.setEnabled(Store.get().sound); });
+
+  /* ---------- press feedback (pointer events only: no duplicate touch/mouse handling) ---------- */
+  var PRESS = '.btn-primary,.btn-secondary,.pill-sm,.tool,.icon-btn,.round-btn,.day,.tab,.fit-btn,.switch';
+  var MIN_HOLD = 90, held = [];
+  document.addEventListener('pointerdown', function (e) {
+    var el = e.target.closest ? e.target.closest(PRESS) : null;
+    if (!el || el.disabled || el.classList.contains('empty')) return;
+    el.classList.add('pressed'); el._pt = performance.now(); held.push(el);
+  }, true);
+  function releaseAll() {
+    var now = performance.now();
+    while (held.length) {
+      (function (el) {
+        var wait = Math.max(0, MIN_HOLD - (now - el._pt));   // quick taps still show the press
+        setTimeout(function () { el.classList.remove('pressed'); }, wait);
+      })(held.pop());
+    }
+  }
+  document.addEventListener('pointerup', releaseAll, true);
+  document.addEventListener('pointercancel', releaseAll, true);
+  window.addEventListener('blur', releaseAll);
+
+  /* hover light follows the cursor (hover-capable devices only) */
+  if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    var hv = null, hx = 0, hy = 0, hraf = 0;
+    document.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var el = e.target.closest ? e.target.closest('.btn-primary,.btn-secondary,.pill-sm,.tool,.round-btn,.icon-btn') : null;
+      if (!el) return;
+      hv = el; hx = e.clientX; hy = e.clientY;
+      if (!hraf) hraf = requestAnimationFrame(function () {
+        hraf = 0;
+        var r = hv.getBoundingClientRect();
+        hv.style.setProperty('--mx', ((hx - r.left) / r.width * 100).toFixed(1) + '%');
+        hv.style.setProperty('--my', ((hy - r.top) / r.height * 100).toFixed(1) + '%');
+      });
+    }, { passive: true });
+  }
 
   /* ---------- resize observers ---------- */
   function onResize() { applySize(); syncCanvas(); }

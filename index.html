@@ -50,11 +50,11 @@
       <div class="col">
         <div class="month-bar">
           <button class="round-btn" data-action="month-prev" aria-label="เดือนก่อนหน้า">
-            <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div class="month-title" id="month-title">–</div>
           <button class="round-btn" data-action="month-next" id="btn-month-next" aria-label="เดือนถัดไป">
-            <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
         <div class="cal-week" id="cal-week"></div>
@@ -91,11 +91,11 @@
     <div class="panel">
       <header class="topbar col">
         <button class="icon-btn" data-action="home" aria-label="กลับ">
-          <svg viewBox="0 0 24 24"><path d="M15 4.5L7.5 12 15 19.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 24 24"><path d="M15 4.5L7.5 12 15 19.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <h2 id="g-title">เลเวล 1</h2>
         <button class="icon-btn" data-action="pause" aria-label="ตั้งค่า">
-          <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" d="M10.3 2.9h3.4l.55 2.4 1.9.8 2.1-1.3 2.4 2.4-1.3 2.1.8 1.9 2.4.55v3.4l-2.4.55-.8 1.9 1.3 2.1-2.4 2.4-2.1-1.3-1.9.8-.55 2.4h-3.4l-.55-2.4-1.9-.8-2.1 1.3-2.4-2.4 1.3-2.1-.8-1.9-2.4-.55v-3.4l2.4-.55.8-1.9-1.3-2.1 2.4-2.4 2.1 1.3 1.9-.8z"/><circle cx="12" cy="12" r="3.3" fill="none" stroke="currentColor" stroke-width="1.9"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.14 4.53 L10.44 2.12 L13.56 2.12 L13.86 4.53 A 7.7 7.7 0 0 1 15.97 5.40 L17.88 3.91 L20.09 6.12 L18.60 8.03 A 7.7 7.7 0 0 1 19.47 10.14 L21.88 10.44 L21.88 13.56 L19.47 13.86 A 7.7 7.7 0 0 1 18.60 15.97 L20.09 17.88 L17.88 20.09 L15.97 18.60 A 7.7 7.7 0 0 1 13.86 19.47 L13.56 21.88 L10.44 21.88 L10.14 19.47 A 7.7 7.7 0 0 1 8.03 18.60 L6.12 20.09 L3.91 17.88 L5.40 15.97 A 7.7 7.7 0 0 1 4.53 13.86 L2.12 13.56 L2.12 10.44 L4.53 10.14 A 7.7 7.7 0 0 1 5.40 8.03 L3.91 6.12 L6.12 3.91 L8.03 5.40 A 7.7 7.7 0 0 1 10.14 4.53 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
         </button>
       </header>
       <div class="stats-row col">
@@ -117,7 +117,7 @@
           <div class="dev-btns">
             <button data-action="dev-grid" id="dv-grid">grid</button>
             <button data-action="dev-perf" id="dv-perf">perf</button>
-            <button data-action="dev-off">&times;</button>
+            <button data-action="dev-off" aria-label="close"><svg viewBox="0 0 24 24" width="10" height="10"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <button class="fit-btn" id="btn-fit" data-action="fit" aria-label="ย่อให้พอดี">
@@ -125,6 +125,7 @@
         </button>
       </div>
       <footer class="tools">
+        <canvas id="dotmap" aria-label="แผนที่จุดแสดงตำแหน่งลูกศร" role="img"></canvas>
         <button class="tool" data-action="hint" id="btn-hint" aria-label="คำใบ้">
           <svg viewBox="0 0 48 56" aria-hidden="true">
             <defs><radialGradient id="gbulb" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#ffe46b"/><stop offset=".6" stop-color="#ffbe16"/><stop offset="1" stop-color="#f09a00"/></radialGradient></defs>
@@ -223,7 +224,6 @@
       <linearGradient id="gheart" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6666"/><stop offset="1" stop-color="#f02c2c"/></linearGradient>
       <symbol id="ic-heart" viewBox="0 0 32 30">
         <path d="M16 28.2C7 21.8 1.6 16.9 1.6 10.4 1.6 5.6 5.2 2 9.8 2c2.6 0 4.9 1.2 6.2 3.2C17.3 3.2 19.6 2 22.2 2c4.6 0 8.2 3.6 8.2 8.4 0 6.5-5.4 11.4-14.4 17.8z" fill="url(#gheart)"/>
-        <path d="M8.2 7.2c-2 .6-3.3 2.4-3.3 4.6" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2" stroke-linecap="round"/>
       </symbol>
       <symbol id="ic-heart-off" viewBox="0 0 32 30">
         <path d="M16 28.2C7 21.8 1.6 16.9 1.6 10.4 1.6 5.6 5.2 2 9.8 2c2.6 0 4.9 1.2 6.2 3.2C17.3 3.2 19.6 2 22.2 2c4.6 0 8.2 3.6 8.2 8.4 0 6.5-5.4 11.4-14.4 17.8z" fill="#dfe4ee"/>
@@ -236,6 +236,7 @@
 <script src="js/levels.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/dotmap.js"></script>
 <script src="js/view.js"></script>
 <script src="js/game.js"></script>
 <script src="js/main.js"></script>
