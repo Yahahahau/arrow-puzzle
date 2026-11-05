@@ -3,7 +3,7 @@
   'use strict';
   var AP = window.AP, Store = AP.Store, Levels = AP.Levels;
   var $ = function (id) { return document.getElementById(id); };
-  var app = $('app'), stage = $('stage'), canvas = $('board');
+  var app = $('app'), stage = $('stage'), canvas = $('board'), fxCanvas = $('fx');
 
   var MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   var WEEK = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
@@ -19,11 +19,19 @@
   }
   function syncCanvas() {
     var w = stage.clientWidth, h = stage.clientHeight;
-    if (w > 0 && h > 0 && (w !== game._w || h !== game._h)) { game._w = w; game._h = h; game.resize(w, h); }
+    if (w <= 0 || h <= 0) return;
+    var ar = app.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+    var W = app.clientWidth, H = app.clientHeight, ox = Math.round((sr.left - ar.left) * 100) / 100, oy = Math.round((sr.top - ar.top) * 100) / 100;
+    var key = w + 'x' + h + '|' + W + 'x' + H + '|' + ox + ',' + oy;
+    if (key === game._key) return;
+    var sizeChanged = w !== game._w || h !== game._h;
+    game._key = key; game._w = w; game._h = h;
+    if (sizeChanged) game.resize(w, h);
+    game.setFx(W, H, ox, oy);
   }
 
   /* ---------- game ---------- */
-  var game = new AP.Game(canvas, {
+  var game = new AP.Game(canvas, fxCanvas, {
     onState: updateHud,
     onSfx: function (n) { AP.Audio.play(n); },
     onHaptic: function () { if (Store.get().vibrate && navigator.vibrate) { try { navigator.vibrate(45); } catch (e) {} } },
@@ -32,6 +40,7 @@
       if (h) { h.classList.remove('pop'); void h.getBoundingClientRect(); h.classList.add('pop'); }
     },
     onZoom: function (z) { $('btn-fit').classList.toggle('show', z); },
+    onPerf: onPerf,
     onWin: onWin,
     onLose: function () { AP.Audio.play('lose'); setTimeout(function () { if (isGame()) show('m-lose'); }, 250); }
   });
@@ -66,7 +75,7 @@
     for (var k = 0; k < hs.length; k++) hs[k].classList.remove('pop');
     setScreen('game');
     applySize();
-    game._w = 0; syncCanvas();
+    game._key = ''; syncCanvas();
     game.load(def);
     game.setPaused(false);
     $('btn-fit').classList.remove('show');
@@ -98,7 +107,7 @@
     if (name === 'home') refreshHome();
     if (name === 'challenge') renderCalendar();
     if (name === 'profile') refreshProfile();
-    if (name !== 'game') game.setPaused(true);
+    if (name !== 'game') { game.cancelFx(); game.setPaused(true); }
   }
   function show(id) { $(id).hidden = false; game.setPaused(true); }
   function hide(id) { $(id).hidden = true; }
@@ -159,6 +168,33 @@
     $('cal-note').textContent = 'ทำคำท้าสำเร็จเดือนนี้ ' + done + ' วัน';
   }
 
+  /* ---------- developer mode: ?dev=1 or tap the level title 5 times ---------- */
+  var devState = { on: false, grid: false, perf: true };
+  function fmt(n, d) { return n.toFixed(d); }
+  function onPerf(p) {
+    if (!devState.on || !devState.perf) return;
+    $('dev-out').textContent =
+      'FPS     ' + fmt(p.fps, 1) + '  (avg ' + fmt(p.avg, 1) + ')\n' +
+      'Frame   ' + fmt(p.ms, 1) + ' ms   ~' + fmt(p.refresh, 0) + ' Hz\n' +
+      'Dropped ' + p.dropped + '\n' +
+      'State   ' + p.state + '\n' +
+      'Flying  ' + p.moving;
+  }
+  function applyDev() {
+    $('dev').hidden = !devState.on;
+    $('dv-grid').classList.toggle('on', devState.grid);
+    $('dv-perf').classList.toggle('on', devState.perf);
+    if (!devState.perf) $('dev-out').textContent = 'perf off';
+    game.setDev({ grid: devState.on && devState.grid, perf: devState.on && devState.perf });
+  }
+  function setDev(on) { devState.on = on; applyDev(); }
+  var titleTaps = 0, titleT = 0;
+  $('g-title').addEventListener('click', function () {
+    var n = performance.now();
+    titleTaps = n - titleT < 1500 ? titleTaps + 1 : 1; titleT = n;
+    if (titleTaps >= 5) { titleTaps = 0; setDev(!devState.on); }
+  });
+
   /* ---------- confirm dialog ---------- */
   function ask(title, text, cb) {
     $('cf-title').textContent = title; $('cf-text').textContent = text; confirmCb = cb; show('m-confirm');
@@ -184,6 +220,9 @@
       else setScreen('challenge');
     },
     'fit': function () { game.fit(); },
+    'dev-grid': function () { devState.grid = !devState.grid; applyDev(); },
+    'dev-perf': function () { devState.perf = !devState.perf; applyDev(); },
+    'dev-off': function () { setDev(false); },
     'hint': function () { game.useHint(); },
     'ruler': function () { game.useRuler(); },
     'toggle-sound': function () { var v = !Store.get().sound; Store.set({ sound: v }); AP.Audio.setEnabled(v); syncSwitches(); if (v) AP.Audio.play('tap'); },
@@ -227,6 +266,7 @@
   AP.Audio.setEnabled(Store.get().sound);
   applySize();
   setScreen('home');
+  if (/[?&]dev=1/.test(location.search)) setDev(true);
   if (/[?&]level=(\d+)/.test(location.search)) startLevel(parseInt(RegExp.$1, 10));
   window.ArrowPuzzle = { game: game, startLevel: startLevel, startDaily: startDaily };
 })();

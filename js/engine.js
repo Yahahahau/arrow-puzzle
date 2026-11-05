@@ -41,6 +41,10 @@
     this.pts = pts;
     this.cum = cum;
     this.alive = true;
+    // cached exit path: grid indices from the cell in front of the head to the board edge
+    var ray = [], rc = cells[n - 1][0] + dx, rr = cells[n - 1][1] + dy;
+    while (rc >= 0 && rr >= 0 && rc < cols && rr < rows) { ray.push(rr * cols + rc); rc += dx; rr += dy; }
+    this.ray = Int32Array.from(ray);
   }
 
   function Board(def) {
@@ -60,16 +64,39 @@
     }
   }
 
+  /* id of the first alive arrow found on a's exit path, or -1 (no allocation) */
+  Board.prototype.blockerId = function (a) {
+    var ray = a.ray, g = this.grid;
+    for (var i = 0; i < ray.length; i++) { var id = g[ray[i]]; if (id >= 0) return id; }
+    return -1;
+  };
+
   /* first alive arrow cell found along the ray from a's head, or null */
   Board.prototype.blocker = function (a) {
-    var dx = DX[a.dir], dy = DY[a.dir];
-    var c = a.head[0] + dx, r = a.head[1] + dy, k = 1;
-    while (c >= 0 && r >= 0 && c < this.cols && r < this.rows) {
-      var id = this.grid[r * this.cols + c];
-      if (id >= 0) return { id: id, dist: k, c: c, r: r };
-      c += dx; r += dy; k++;
+    var ray = a.ray, g = this.grid;
+    for (var i = 0; i < ray.length; i++) {
+      var id = g[ray[i]];
+      if (id >= 0) return { id: id, dist: i + 1, c: ray[i] % this.cols, r: (ray[i] / this.cols) | 0 };
     }
     return null;
+  };
+
+  /* Occupancy map for debugging / tooling. out: Uint8Array(cols*rows)
+   * 0 = empty, 1 = occupied, 2 = blocked path (cells an arrow cannot pass),
+   * 3 = available path (clear exit route of a free arrow) */
+  Board.prototype.cellStates = function (out) {
+    var i, a, k, id, g = this.grid;
+    for (i = 0; i < g.length; i++) out[i] = g[i] >= 0 ? 1 : 0;
+    for (i = 0; i < this.arrows.length; i++) {
+      a = this.arrows[i];
+      if (!a.alive) continue;
+      var ray = a.ray, bl = this.blockerId(a);
+      for (k = 0; k < ray.length; k++) {
+        if (g[ray[k]] >= 0) break;
+        if (bl < 0) { if (out[ray[k]] === 0) out[ray[k]] = 3; } else out[ray[k]] = 2;
+      }
+    }
+    return out;
   };
 
   Board.prototype.remove = function (id) {

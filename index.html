@@ -112,6 +112,14 @@
       </div>
       <div id="stage">
         <canvas id="board" aria-label="กระดานเกม"></canvas>
+        <div id="dev" hidden>
+          <pre id="dev-out">dev</pre>
+          <div class="dev-btns">
+            <button data-action="dev-grid" id="dv-grid">grid</button>
+            <button data-action="dev-perf" id="dv-perf">perf</button>
+            <button data-action="dev-off">&times;</button>
+          </div>
+        </div>
         <button class="fit-btn" id="btn-fit" data-action="fit" aria-label="ย่อให้พอดี">
           <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -162,6 +170,9 @@
       <span>ฉัน</span>
     </button>
   </nav>
+
+  <!-- animation layer: covers the whole app so flying arrows are never clipped by the board -->
+  <canvas id="fx" aria-hidden="true"></canvas>
 
   <!-- ================= MODALS ================= -->
   <div class="modal" id="m-pause" hidden>

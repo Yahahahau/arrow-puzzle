@@ -1,17 +1,31 @@
 /* Arrow Puzzle — game.js
- * Game state, input -> action, snake-slide animation, rendering (Canvas 2D).
- * rAF + delta time; the loop sleeps when nothing is animating. */
+ * Game state, input -> action, arrow animation, rendering (Canvas 2D).
+ *
+ * Two canvas layers:
+ *   - board canvas (#board, inside the stage): idle arrows, dots, hint/ruler/debug.
+ *     It is only repainted when something on it changes.
+ *   - fx canvas (#fx, covers the WHOLE app area): arrows that are flying out, and
+ *     confetti. Because it is not clipped by the board/stage, an arrow keeps
+ *     travelling in a straight line until it has left the visible area completely.
+ *
+ * Arrow flight: constant speed (screen px/s at launch zoom), opacity always 1,
+ * time-based (rAF timestamps), so speed does not depend on the refresh rate. */
 (function (G) {
   'use strict';
   var AP = G.AP = G.AP || {};
 
   var INK = '#0e1650', RED = '#ef4444', ORANGE = '#f97316', BLUE = '#2f86eb', GOLD = '#ffb800', GREEN = '#22c55e';
-  var LW = 0.17;            // line width (cells)
+  var LW = 0.17;                 // line width (cells)
   var HEAD_LEN = 0.46, HEAD_HALF = 0.27;
-  var ANTIC_T = 0.1, ANTIC_D = 0.32, ACC = 95, VMAX = 70;
+  var SPEED_PX = 1600;           // flight speed in screen px / second (at the zoom used at launch)
+  var MIN_V = 16, MAX_V = 140;   // clamp in cells / second
+  var RAMP = 0.06;               // s: velocity-continuous start (no stop, no jump)
+  var EXIT_MARGIN = 1.5;         // cells beyond the visible edge before the arrow is removed
   var BUMP_T = 0.5;
   var HINT_T = 3.6, RULER_T = 4.2;
   var HEARTS = 3, HINTS = 3, RULERS = 3;
+  var MAX_DT = 0.1;
+  var RING = 120;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -32,9 +46,12 @@
     out[1] = pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t;
   }
 
-  function Game(canvas, cb) {
+  function Game(canvas, fxCanvas, cb) {
     this.cv = canvas;
     this.ctx = canvas.getContext('2d', { alpha: true });
+    this.fx = fxCanvas;
+    this.fctx = fxCanvas.getContext('2d', { alpha: true });
+    this.fxW = 1; this.fxH = 1; this.fxX = 0; this.fxY = 0;
     this.cb = cb || {};
     var self = this;
     this.view = new AP.View(canvas, {
@@ -46,20 +63,27 @@
     this.state = 'idle';
     this.paused = false;
     this.hearts = HEARTS; this.hints = HINTS; this.rulers = RULERS;
-    this.moving = 0; this.hintId = -1; this.hintT = 0; this.rulerT = 0;
+    this.mv = [];                       // arrows currently flying (state is per arrow)
+    this.hintId = -1; this.hintT = 0; this.rulerT = 0;
     this.dots = []; this.parts = [];
     this.endTimer = 0; this.endKind = '';
     this.running = false; this.lastT = 0; this.raf = 0;
-    this._tmp = [0, 0]; this._win = [];
+    this._tmp = [0, 0]; this._win = []; this._vis = [];
+    this._needBoard = true; this._prevBA = false; this._fxDirty = false; this._bumping = false;
+    // developer tools
+    this.dev = { grid: false, perf: false };
+    this._cs = null; this._csDirty = true;
+    this._ring = new Float32Array(RING); this._ri = 0; this._rn = 0;
+    this._frames = 0; this._time = 0; this._dropped = 0; this._lastMs = 0; this._perfT = 0;
     this._loop = this._loop.bind(this);
-    this._vis = function () { self.lastT = 0; if (!document.hidden && self.running) self._kick(); };
-    document.addEventListener('visibilitychange', this._vis);
+    this._onVis = function () { self.lastT = 0; if (!document.hidden && self.running) self._kick(); };
+    document.addEventListener('visibilitychange', this._onVis);
   }
 
   Game.prototype.destroy = function () {
     this.running = false;
-    cancelAnimationFrame(this.raf);
-    document.removeEventListener('visibilitychange', this._vis);
+    cancelAnimationFrame(this.raf); this.raf = 0;
+    document.removeEventListener('visibilitychange', this._onVis);
   };
 
   Game.prototype.resize = function (w, h) {
@@ -67,15 +91,27 @@
     this.cv.width = Math.max(1, Math.round(w * dpr));
     this.cv.height = Math.max(1, Math.round(h * dpr));
     this.view.resize(w, h, dpr);
+    this._needBoard = true;
+    this._kick();
+  };
+
+  /* size/position of the full-area animation layer; (ox, oy) = stage origin inside it */
+  Game.prototype.setFx = function (W, H, ox, oy) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    this.fxW = W; this.fxH = H; this.fxX = ox; this.fxY = oy;
+    this.fx.width = Math.max(1, Math.round(W * dpr));
+    this.fx.height = Math.max(1, Math.round(H * dpr));
+    this._fxDirty = true;
     this._kick();
   };
 
   Game.prototype.load = function (def) {
+    this.cancelFx();
     this.def = def;
     this.board = new AP.Board(def);
     this.state = 'play';
     this.hearts = HEARTS; this.hints = HINTS; this.rulers = RULERS;
-    this.moving = 0; this.hintId = -1; this.hintT = 0; this.rulerT = 0; this.parts.length = 0;
+    this.hintId = -1; this.hintT = 0; this.rulerT = 0; this.parts.length = 0;
     this.endTimer = 0; this.endKind = '';
     var i, a;
     for (i = 0; i < this.board.arrows.length; i++) {
@@ -91,14 +127,26 @@
     this.dots = [];
     for (var r = 0; r < def.rows; r++) for (var c = 0; c < def.cols; c++)
       if (this.board.grid[r * def.cols + c] < 0) this.dots.push(c + 0.5, r + 0.5);
+    this._cs = new Uint8Array(def.cols * def.rows); this._csDirty = true;
     this.view.setBoard(def.cols, def.rows);
+    this._resetPerf();
+    this._needBoard = true;
     this._emit();
     this.running = true;
     this._kick();
   };
 
+  /* stop every flying arrow immediately and clear the animation layer (restart / leave level) */
+  Game.prototype.cancelFx = function () {
+    this.mv.length = 0; this.parts.length = 0;
+    this.endTimer = 0; this.endKind = '';
+    this.fctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.fctx.clearRect(0, 0, this.fx.width, this.fx.height);
+    this._fxDirty = false;
+  };
+
   Game.prototype.restart = function () { if (this.def) this.load(this.def); };
-  Game.prototype.setPaused = function (p) { this.paused = p; this.lastT = 0; if (!p) this._kick(); };
+  Game.prototype.setPaused = function (p) { this.paused = p; this.lastT = 0; if (!p) { this._needBoard = true; this._kick(); } };
   Game.prototype.fit = function () { this.view.fit(true); this._kick(); };
   Game.prototype.zoomBy = function (f) {
     var v = this.view;
@@ -107,10 +155,16 @@
   Game.prototype.getInfo = function () {
     return {
       alive: this.board ? this.board.alive : 0, total: this.board ? this.board.arrows.length : 0,
-      hearts: this.hearts, hints: this.hints, rulers: this.rulers, state: this.state
+      hearts: this.hearts, hints: this.hints, rulers: this.rulers, state: this.state, moving: this.mv.length
     };
   };
   Game.prototype._emit = function () { if (this.cb.onState) this.cb.onState(this.getInfo()); };
+
+  Game.prototype.setDev = function (o) {
+    if (o.grid !== undefined) { this.dev.grid = !!o.grid; this._csDirty = true; }
+    if (o.perf !== undefined) { this.dev.perf = !!o.perf; this._resetPerf(); }
+    this._needBoard = true; this._kick();
+  };
 
   /* ---------- picking ---------- */
   function segDist(px, py, x1, y1, x2, y2) {
@@ -145,20 +199,22 @@
     var id = this._pick(wx, wy, scale);
     if (id < 0) return;
     var b = this.board, a = b.arrows[id];
-    if (!a.alive || a.phase !== 0) return;
+    if (!a.alive || a.phase !== 0) return;      // already flying / gone: ignore repeated taps
     if (a.bump >= 0) return;
-    var bl = b.blocker(a);
-    if (!bl) {
-      b.remove(id);
-      a.phase = 1; a.t = 0; a.s = 0; a.v = 0;
-      this.moving++;
+    var blId = b.blockerId(a);
+    if (blId < 0) {
+      b.remove(id);                              // occupancy grid updated at launch
+      a.phase = 2; a.t = 0; a.s = 0;
+      a.v = clamp(SPEED_PX / this.view.scale, MIN_V, MAX_V);   // constant for the whole flight
+      this.mv.push(a);
+      this._csDirty = true; this._needBoard = true; this._fxDirty = true;
       if (this.hintId === id) { this.hintId = -1; this.hintT = 0; }
       if (this.cb.onSfx) this.cb.onSfx('go');
       if (b.alive === 0) { this.endKind = 'win'; this.endTimer = 0.3; }
       this._emit();
     } else {
       a.bump = 0;
-      b.arrows[bl.id].flash = 0;
+      b.arrows[blId].flash = 0;
       this.hearts--;
       if (this.cb.onSfx) this.cb.onSfx('err');
       if (this.cb.onHaptic) this.cb.onHaptic();
@@ -201,7 +257,7 @@
 
   /* ---------- loop ---------- */
   Game.prototype._animating = function () {
-    return this.moving > 0 || this.hintT > 0 || this.rulerT > 0 || this.parts.length > 0 ||
+    return this.mv.length > 0 || this.hintT > 0 || this.rulerT > 0 || this.parts.length > 0 ||
       this.endTimer > 0 || this._bumping || this.view.tween !== null ||
       this.view.vx !== 0 || this.view.vy !== 0 || this.view.dirty || this.view.ptrs.size > 0;
   };
@@ -213,31 +269,58 @@
   Game.prototype._loop = function (now) {
     this.raf = 0;
     if (!this.running) return;
-    var dt = this.lastT ? (now - this.lastT) / 1000 : 1 / 60;
+    var raw = this.lastT ? now - this.lastT : 0;
+    var dt = raw ? raw / 1000 : 1 / 60;
     this.lastT = now;
-    if (dt > 0.05) dt = 0.05;
-    if (this.paused) { this._render(); return; }
+    if (dt > MAX_DT) dt = MAX_DT;
+    if (this.paused) { this._renderBoard(); return; }
+    if (raw) this._perf(raw);
     this._update(dt);
-    this._render();
+    var ba = this._bumping || this.hintT > 0 || this.rulerT > 0;
+    if (this._vd || this._needBoard || ba || this._prevBA) { this._renderBoard(); this._needBoard = false; }
+    this._prevBA = ba;
+    if (this._fxDirty || this.mv.length || this.parts.length) this._renderFx();
     if (this._animating()) this.raf = requestAnimationFrame(this._loop);
   };
 
   Game.prototype._update = function (dt) {
-    var v = this.view; v.update(dt);
+    var v = this.view;
+    this._vd = v.update(dt);
     var b = this.board; if (!b) return;
     var i, a, bumping = false;
+
+    // flying arrows: constant speed, velocity-continuous start, removed only when fully off-screen
+    if (this.mv.length) {
+      var sc = v.scale, ox = v.tx + this.fxX, oy = v.ty + this.fxY;
+      var x0 = -ox / sc, y0 = -oy / sc, x1 = (this.fxW - ox) / sc, y1 = (this.fxH - oy) / sc;
+      var cap = Math.max(x1 - x0, y1 - y0) + 40, t = this._tmp;
+      for (i = this.mv.length - 1; i >= 0; i--) {
+        a = this.mv[i];
+        a.t += dt;
+        a.s = a.t < RAMP ? a.v * a.t * a.t / (2 * RAMP) : a.v * (a.t - RAMP * 0.5);
+        var done = false;
+        if (a.s >= a.dEdge + a.L) {                // whole arrow is on the straight run-out line
+          pointAt(a, a.s, t);                      // tail position
+          var m = EXIT_MARGIN;
+          switch (a.dir) {
+            case 'R': done = t[0] > x1 + m; break;
+            case 'L': done = t[0] < x0 - m; break;
+            case 'D': done = t[1] > y1 + m; break;
+            default:  done = t[1] < y0 - m;
+          }
+          if (a.s > a.dEdge + a.L + cap) done = true;   // safety net
+        }
+        if (done) {
+          a.phase = 3;
+          var last = this.mv.pop();
+          if (last !== a) this.mv[i] = last;
+          this._fxDirty = true;                    // one more pass to wipe the last frame
+        }
+      }
+    }
+
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
-      if (a.phase === 1) {
-        a.t += dt;
-        var u = clamp(a.t / ANTIC_T, 0, 1);
-        a.s = -ANTIC_D * (1 - (1 - u) * (1 - u));
-        if (u >= 1) { a.phase = 2; a.v = 0; }
-      } else if (a.phase === 2) {
-        a.v = Math.min(a.v + ACC * dt, VMAX);
-        a.s += a.v * dt;
-        if (a.s >= a.dEdge + a.L + 0.8) { a.phase = 3; this.moving--; }
-      }
       if (a.bump >= 0) { a.bump += dt; if (a.bump > BUMP_T) a.bump = -1; else bumping = true; }
       if (a.flash >= 0) { a.flash += dt; if (a.flash > BUMP_T) a.flash = -1; else bumping = true; }
     }
@@ -245,7 +328,8 @@
     if (this.hintT > 0) { this.hintT -= dt; if (this.hintT <= 0) this.hintId = -1; }
     if (this.rulerT > 0) this.rulerT = Math.max(0, this.rulerT - dt);
     if (this.parts.length) this._stepParts(dt);
-    if (this.endTimer > 0 && this.moving === 0) {
+
+    if (this.endTimer > 0 && this.mv.length === 0) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) {
         if (this.endKind === 'win') {
@@ -260,10 +344,34 @@
     }
   };
 
-  /* ---------- confetti ---------- */
+  /* ---------- performance monitor (developer mode) ---------- */
+  Game.prototype._resetPerf = function () {
+    this._ri = 0; this._rn = 0; this._frames = 0; this._time = 0; this._dropped = 0; this._lastMs = 0; this._perfT = 0;
+  };
+  Game.prototype._perf = function (ms) {
+    if (!this.dev.perf) return;
+    this._ring[this._ri] = ms; this._ri = (this._ri + 1) % RING; if (this._rn < RING) this._rn++;
+    this._frames++; this._time += ms; this._lastMs = ms;
+    var i, mn = 1e9, n = this._rn;
+    for (i = 0; i < n; i++) { var d = this._ring[i]; if (d > 3 && d < mn) mn = d; }
+    if (ms > mn * 1.5 && mn < 1e9) this._dropped++;
+    this._perfT += ms;
+    if (this._perfT >= 250) {
+      this._perfT = 0;
+      var m = Math.min(30, n), sum = 0;
+      for (i = 1; i <= m; i++) sum += this._ring[(this._ri - i + RING) % RING];
+      if (this.cb.onPerf) this.cb.onPerf({
+        fps: m ? 1000 / (sum / m) : 0, avg: this._time ? this._frames * 1000 / this._time : 0, ms: this._lastMs,
+        dropped: this._dropped, moving: this.mv.length, refresh: mn < 1e9 ? 1000 / mn : 0,
+        state: this.paused ? 'paused' : this.mv.length ? 'flying' : this._bumping ? 'bump' : (this.view.tween || this.view.ptrs.size || this.view.vx || this.view.vy) ? 'camera' : 'idle'
+      });
+    }
+  };
+
+  /* ---------- confetti (drawn on the fx layer, screen space) ---------- */
   Game.prototype._confetti = function () {
     var cols = ['#2f86eb', '#ffb800', '#ef4444', '#22c55e', '#a855f7', '#0e1650'];
-    var w = this.view.w, h = this.view.h;
+    var w = this.fxW, h = this.fxH;
     for (var i = 0; i < 70; i++) {
       var ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.9, sp = (0.5 + Math.random()) * Math.min(w, h) * 1.1;
       this.parts.push({
@@ -272,14 +380,16 @@
         c: cols[i % cols.length], life: 1.5 + Math.random() * 0.6, t: 0
       });
     }
+    this._fxDirty = true;
   };
   Game.prototype._stepParts = function (dt) {
     var p = this.parts;
     for (var i = p.length - 1; i >= 0; i--) {
       var q = p[i];
       q.t += dt; q.vy += 900 * dt; q.vx *= 0.99; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += q.vr * dt;
-      if (q.t > q.life) p.splice(i, 1);
+      if (q.t > q.life) { p[i] = p[p.length - 1]; p.pop(); }
     }
+    if (!p.length) this._fxDirty = true;
   };
 
   /* ---------- rendering ---------- */
@@ -291,7 +401,7 @@
     ctx.closePath();
   }
 
-  /* collect the visible window of the arrow polyline into this._win (flat) */
+  /* visible window of the arrow polyline -> this._win (flat x,y list) */
   Game.prototype._window = function (a, s) {
     var w = this._win, t = this._tmp, n = 0, i;
     pointAt(a, s, t); w[n++] = t[0]; w[n++] = t[1];
@@ -305,20 +415,19 @@
     return n;
   };
 
-  Game.prototype._drawOne = function (a, color, alpha, ox, oy, lw, glow) {
-    var ctx = this.ctx, n = this._window(a, a.s), w = this._win, i;
+  Game.prototype._drawOne = function (ctx, a, color, ox, oy, lw, glow) {
+    var n = this._window(a, a.s), w = this._win, i;
     var dx = AP.DX[a.dir], dy = AP.DY[a.dir];
     ctx.save();
     ctx.translate(ox, oy);
-    ctx.globalAlpha = alpha;
     if (glow) {
       ctx.strokeStyle = glow.c; ctx.fillStyle = glow.c; ctx.lineWidth = lw + glow.w;
-      ctx.globalAlpha = alpha * glow.a;
+      ctx.globalAlpha = glow.a;
       ctx.beginPath(); ctx.moveTo(w[0], w[1]);
       for (i = 2; i < n; i += 2) ctx.lineTo(w[i], w[i + 1]);
       ctx.stroke();
       ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy); ctx.fill(); ctx.stroke();
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = 1;
     }
     ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw;
     ctx.beginPath(); ctx.moveTo(w[0], w[1]);
@@ -329,7 +438,32 @@
     ctx.restore();
   };
 
-  Game.prototype._render = function () {
+  /* animation layer: flying arrows (opacity 1, never faded or scaled) + confetti */
+  Game.prototype._renderFx = function () {
+    var ctx = this.fctx, v = this.view, i;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.fx.width, this.fx.height);
+    this._fxDirty = false;
+    if (this.mv.length) {
+      var k = v.dpr * v.scale, lw = Math.max(LW, 1.7 / v.scale);
+      ctx.setTransform(k, 0, 0, k, v.dpr * (v.tx + this.fxX), v.dpr * (v.ty + this.fxY));
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
+      for (i = 0; i < this.mv.length; i++) this._drawOne(ctx, this.mv[i], INK, 0, 0, lw, null);
+    }
+    if (this.parts.length) {
+      ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
+      for (i = 0; i < this.parts.length; i++) {
+        var q = this.parts[i];
+        ctx.save();
+        ctx.globalAlpha = clamp(1 - (q.t - q.life * 0.6) / (q.life * 0.4), 0, 1);
+        ctx.translate(q.x, q.y); ctx.rotate(q.rot);
+        ctx.fillStyle = q.c; ctx.fillRect(-q.r, -q.r * 0.5, q.r * 2, q.r);
+        ctx.restore();
+      }
+    }
+  };
+
+  Game.prototype._renderBoard = function () {
     var ctx = this.ctx, v = this.view, b = this.board;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.cv.width, this.cv.height);
@@ -348,6 +482,20 @@
       ctx.moveTo(dd[i] + dr, dd[i + 1]); ctx.arc(dd[i], dd[i + 1], dr, 0, 6.2832);
     }
     ctx.fill();
+
+    // developer: occupancy grid overlay
+    if (this.dev.grid) {
+      if (this._csDirty) { b.cellStates(this._cs); this._csDirty = false; }
+      var cs = this._cs, COL = ['rgba(140,150,170,.10)', 'rgba(59,130,246,.22)', 'rgba(239,68,68,.32)', 'rgba(34,197,94,.30)'];
+      var c0 = Math.max(0, Math.floor(x0)), c1 = Math.min(b.cols - 1, Math.floor(x1));
+      var r0 = Math.max(0, Math.floor(y0)), r1 = Math.min(b.rows - 1, Math.floor(y1));
+      for (var st = 0; st < 4; st++) {
+        ctx.fillStyle = COL[st]; ctx.beginPath();
+        for (var rr = r0; rr <= r1; rr++) for (var cc = c0; cc <= c1; cc++)
+          if (cs[rr * b.cols + cc] === st) ctx.rect(cc + 0.04, rr + 0.04, 0.92, 0.92);
+        ctx.fill();
+      }
+    }
 
     // ruler guides
     if (this.rulerT > 0) {
@@ -372,7 +520,7 @@
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = lw;
     ctx.beginPath();
-    var vis = [];
+    var vis = this._vis; vis.length = 0;
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
       if (!a.alive || a.phase !== 0) continue;
@@ -411,29 +559,8 @@
         var fade = Math.min(1, this.hintT / 0.4);
         color = BLUE; glow = { c: GOLD, w: 0.5 + 0.25 * pulse, a: (0.4 + 0.3 * pulse) * fade };
       }
-      this._drawOne(a, color, 1, ox, oy, lw, glow);
-    }
-
-    // moving arrows (on top)
-    for (i = 0; i < b.arrows.length; i++) {
-      a = b.arrows[i];
-      if (a.phase !== 1 && a.phase !== 2) continue;
-      var over = a.s + a.L - a.dEdge, al = 1;
-      if (over > 0) al = clamp(1 - over / (a.L * 0.6 + 4), 0, 1);
-      if (al > 0.01) this._drawOne(a, INK, al, 0, 0, lw, null);
-    }
-
-    // confetti (screen space)
-    if (this.parts.length) {
-      ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
-      for (i = 0; i < this.parts.length; i++) {
-        var q = this.parts[i];
-        ctx.save();
-        ctx.globalAlpha = clamp(1 - (q.t - q.life * 0.6) / (q.life * 0.4), 0, 1);
-        ctx.translate(q.x, q.y); ctx.rotate(q.rot);
-        ctx.fillStyle = q.c; ctx.fillRect(-q.r, -q.r * 0.5, q.r * 2, q.r);
-        ctx.restore();
-      }
+      a.s = 0;
+      this._drawOne(ctx, a, color, ox, oy, lw, glow);
     }
   };
 

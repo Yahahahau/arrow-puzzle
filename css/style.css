@@ -247,3 +247,15 @@ svg { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .modal, .modal .card, .medal, .heart.pop { animation: none; }
 }
+
+/* ---------- animation layer (full app area, never clipped by the stage) ---------- */
+#fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; display: none; }
+#app[data-screen="game"] #fx { display: block; }
+
+/* ---------- developer mode ---------- */
+#dev { position: absolute; left: calc(var(--u) * 2); top: calc(var(--u) * 2); z-index: 3; pointer-events: none; font-family: ui-monospace, Menlo, Consolas, monospace; }
+#dev pre { margin: 0; padding: calc(var(--u) * 1.4) calc(var(--u) * 2); border-radius: calc(var(--u) * 1.6); background: rgba(14,22,80,.78); color: #b9f5c8;
+  font-size: max(10px, calc(var(--u) * 2.7)); line-height: 1.35; white-space: pre; }
+.dev-btns { display: flex; gap: calc(var(--u) * 1); margin-top: calc(var(--u) * 1); pointer-events: auto; }
+.dev-btns button { padding: calc(var(--u) * .8) calc(var(--u) * 2.2); border-radius: 99px; background: rgba(14,22,80,.78); color: #fff; font-size: max(10px, calc(var(--u) * 2.7)); }
+.dev-btns button.on { background: #22c55e; color: #052e16; }
