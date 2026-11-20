@@ -14,7 +14,12 @@
   function applySize() {
     var w = app.clientWidth, h = app.clientHeight;
     if (!w || !h) return;
-    app.style.setProperty('--u', Math.min(w / 100, h * 9 / 1600) + 'px');
+    // portrait: 9:16 design width; landscape (tablets, rotated phones, desktop): side panels around the board.
+    // --u is capped so tablets get comfortable, not oversized, controls.
+    var land = w > h * 1.15;
+    if (app.dataset.orient !== (land ? 'land' : 'port')) app.dataset.orient = land ? 'land' : 'port';
+    var u = land ? Math.min(h / 100, w / 190) : Math.min(w / 100, h * 9 / 1600);
+    app.style.setProperty('--u', Math.min(u, 5.2).toFixed(3) + 'px');
   }
   function syncCanvas() {
     var w = stage.clientWidth, h = stage.clientHeight;

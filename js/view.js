@@ -63,6 +63,7 @@
     var zf = this.scale / this.minS;
     var cwx = (this.w / 2 - this.tx) / this.scale, cwy = (this.h / 2 - this.ty) / this.scale;
     this.w = w; this.h = h; this.dpr = dpr;
+    this.pad = Math.round(Math.max(12, Math.min(w, h) * 0.04));   // breathing room so arrow heads never touch the edge
     this.limits();
     if (had) {
       this.scale = clamp(zf * this.minS, this.minS, this.maxS);

@@ -26,7 +26,10 @@
   var RAMP = 0.07;               // s: smoothstep velocity ramp at the start (no jump)
   var DEC_START = 0.6, DEC_DROP = 0.45;  // last 40% of the route eases down to 55% of cruise speed (never stops)
   var EXIT_MARGIN = 1.5;         // cells beyond the visible edge before the arrow is removed
-  var BUMP_T = 0.5;
+  var BUMP_T = 0.5;                                   // blocker flash duration
+  var POP_T = 0.75;                                   // board dot "pop in" (spring) duration
+  var HIT_GAP = 0.02;                                 // cells left between arrow tip and the blocker's stroke at impact
+  var BACK_MIN = 0.34, BACK_MAX = 0.7;                // retreat duration range (s), relaxed ease-in-out
   var HOVER_S = 1.035, PRESS_S = 0.93, LIFT = 0.05;   // arrow interaction: scale / lift (cells), render-only
   var SPR_K = 380, SPR_C = 21;                        // spring stiffness / damping (slight overshoot)
   var HINT_T = 3.6, RULER_T = 4.2;
@@ -35,6 +38,15 @@
   var RING = 120;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function rgbOf(c) {
+    var m = /^#([0-9a-f]{6})$/i.exec(c);
+    if (m) return [parseInt(m[1].substr(0, 2), 16), parseInt(m[1].substr(2, 2), 16), parseInt(m[1].substr(4, 2), 16)];
+    m = /(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(c || ''); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
+  }
+  function mix(c1, c2, t) {
+    var a = rgbOf(c1), b = rgbOf(c2);
+    return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * t) + ',' + Math.round(a[1] + (b[1] - a[1]) * t) + ',' + Math.round(a[2] + (b[2] - a[2]) * t) + ')';
+  }
 
   function pointAt(a, d, out) {
     var pts = a.pts, cum = a.cum, n = pts.length, i;
@@ -79,7 +91,7 @@
     this.lives = LIVES; this.hints = HINTS; this.rulers = RULERS;
     this.mv = [];                       // arrows currently flying (state is per arrow)
     this.hintId = -1; this.hintT = 0; this.rulerT = 0;
-    this.dots = [];
+    this.dotB = null; this.clock = 0; this._dotsAnimUntil = 0; this.bp = [];
     this.endTimer = 0; this.endKind = '';
     this.running = false; this.lastT = 0; this.raf = 0;
     this._tmp = [0, 0]; this._win = []; this._vis = [];
@@ -144,7 +156,7 @@
     var i, a;
     for (i = 0; i < this.board.arrows.length; i++) {
       a = this.board.arrows[i];
-      a.phase = 0; a.t = 0; a.s = 0; a.v = 0; a.bump = -1; a.flash = -1; a.sc = 1; a.sv = 0; a.hv = 0; a.tg = 1;
+      a.phase = 0; a.t = 0; a.s = 0; a.v = 0; a.bump = -1; a.flash = -1; a.sc = 1; a.sv = 0; a.hv = 0; a.tg = 1; a.dl = 0; a.vac = 0; a.hitT = -1;
       var mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
       for (var k = 0; k < a.cells.length; k++) {
         mnx = Math.min(mnx, a.cells[k][0]); mxx = Math.max(mxx, a.cells[k][0] + 1);
@@ -152,9 +164,23 @@
       }
       a.bb = [mnx - 0.3, mny - 0.3, mxx + 0.3, mxy + 0.3];
     }
-    this.dots = [];
-    for (var r = 0; r < def.rows; r++) for (var c = 0; c < def.cols; c++)
-      if (this.board.grid[r * def.cols + c] < 0) this.dots.push(c + 0.5, r + 0.5);
+    // board dots: born (with a springy pop) on empty cells at level start, and on arrow cells only once
+    // the arrow has really left them. dotB[cell] = birth time on this.clock, -1 = no dot.
+    var nC = def.cols * def.rows, cx0 = def.cols / 2, cy0 = def.rows / 2, md = Math.sqrt(cx0 * cx0 + cy0 * cy0) || 1;
+    this.dotB = new Float32Array(nC); this.clock = 0; this.bp.length = 0;
+    var rm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    for (var r = 0; r < def.rows; r++) for (var c = 0; c < def.cols; c++) {
+      var dd = Math.sqrt((c + 0.5 - cx0) * (c + 0.5 - cx0) + (r + 0.5 - cy0) * (r + 0.5 - cy0)) / md;
+      this.dotB[r * def.cols + c] = this.board.grid[r * def.cols + c] < 0 ? (rm ? -POP_T : 0.12 + dd * 0.4) : -1;
+    }
+    // intro: arrows spring in from the centre outwards (render-only)
+    if (!rm) for (i = 0; i < this.board.arrows.length; i++) {
+      a = this.board.arrows[i];
+      var ax = (a.bb[0] + a.bb[2]) / 2 - cx0, ay = (a.bb[1] + a.bb[3]) / 2 - cy0;
+      a.sc = 0; a.sv = 0; a.tg = 1; a.dl = 0.04 + Math.sqrt(ax * ax + ay * ay) / md * 0.42;
+    }
+    this._spring = rm ? 0 : 1;
+    this._dotsAnimUntil = 0.12 + 0.4 + POP_T;
     this._cs = new Uint8Array(def.cols * def.rows); this._csDirty = true;
     this.view.setBoard(def.cols, def.rows);
     if (this.dm) { this.dm.setBoard(this.board); this._dotsDirty = false; }
@@ -268,7 +294,8 @@
     var h = Math.min(dt, 1 / 30);
     for (i = 0; i < n; i++) {
       a = b.arrows[i];
-      if (!a.alive || a.phase !== 0) continue;
+      if (!a.alive || a.phase > 1) continue;
+      if (a.dl > 0) { a.dl -= dt; any = true; continue; }
       var d = a.sc - a.tg;
       if (d > 0.0005 || d < -0.0005 || a.sv > 0.002 || a.sv < -0.002) {
         a.sv += (-SPR_K * d - SPR_C * a.sv) * h; a.sc += a.sv * h; any = true;
@@ -287,7 +314,6 @@
     if (id < 0) return;
     var b = this.board, a = b.arrows[id];
     if (!a.alive || a.phase !== 0) return;      // already flying / gone: ignore repeated taps
-    if (a.bump >= 0) return;
     var blId = b.blockerId(a);
     if (blId < 0) {
       b.remove(id);                              // occupancy grid updated at launch
@@ -308,16 +334,32 @@
       if (b.alive === 0) { this.endKind = 'win'; this.endTimer = 0.3; }
       this._emit();
     } else {
-      a.bump = 0; a.tg = 1;
-      b.arrows[blId].flash = 0;
-      this.lives--;
-      if (this.cb.onSfx) this.cb.onSfx('err');
-      if (this.cb.onHaptic) this.cb.onHaptic();
-      if (this.lives <= 0) { this.state = 'lost'; this.endKind = 'lose'; this.endTimer = 0.75; }
-      if (this.cb.onLifeLost) this.cb.onLifeLost(this.lives);
-      this._emit();
+      // blocked: the arrow really travels forward along its path until its tip touches the blocker,
+      // loses a life on impact, then eases back to where it started. The grid never changes.
+      var bl = b.blocker(a);
+      a.phase = 1; a.t = 0; a.s = 0; a.tg = 1; a.hitT = -1;
+      a.hit = Math.max(0.12, bl.dist - HEAD_LEN - LW * 0.5 - HIT_GAP);
+      a.blk = bl.id;
+      a.v = clamp(SPEED_PX / this.view.scale, MIN_V, MAX_V);
+      if (this.pressId === id) this.pressId = -1;
+      this.bp.push(a);
+      if (this.hintId === id) { this.hintId = -1; this.hintT = 0; }
+      if (this.cb.onSfx) this.cb.onSfx('go');
     }
     this._kick();
+  };
+
+  Game.prototype._impact = function (a) {
+    var b = this.board;
+    if (b.arrows[a.blk] && b.arrows[a.blk].alive) b.arrows[a.blk].flash = 0;
+    a.sv = -2.6;                                 // small squash on the spring, released while backing off
+    this.lives--;
+    if (this.cb.onSfx) this.cb.onSfx('err');
+    if (this.cb.onHaptic) this.cb.onHaptic();
+    if (this.lives <= 0) { this.state = 'lost'; this.endKind = 'lose'; this.endTimer = 0.75; }
+    if (this.cb.onLifeLost) this.cb.onLifeLost(this.lives);
+    this._spring = 1;
+    this._emit();
   };
 
   Game.prototype.useHint = function () {
@@ -353,7 +395,7 @@
   /* ---------- loop ---------- */
   Game.prototype._animating = function () {
     return this.mv.length > 0 || this.hintT > 0 || this.rulerT > 0 ||
-      this.endTimer > 0 || this._bumping || this._spring || this.cf.length || (this.dm && this.dm.active) || this.view.tween !== null ||
+      this.endTimer > 0 || this._bumping || this._spring || (this.board && this.clock < this._dotsAnimUntil) || this.cf.length || (this.dm && this.dm.active) || this.view.tween !== null ||
       this.view.vx !== 0 || this.view.vy !== 0 || this.view.dirty || this.view.ptrs.size > 0;
   };
   Game.prototype._kick = function () {
@@ -377,7 +419,7 @@
       var dmA = this.dm.step(dt);
       if (dmA || this._vd || this.dm.needDraw) this.dm.draw(this.view);
     }
-    var ba = this._bumping || this.hintT > 0 || this.rulerT > 0 || this._spring;
+    var ba = this._bumping || this.hintT > 0 || this.rulerT > 0 || this._spring || this.clock < this._dotsAnimUntil;
     if (this._vd || this._needBoard || ba || this._prevBA) { this._renderBoard(); this._needBoard = false; }
     this._prevBA = ba;
     if (this._fxDirty || this.mv.length) this._renderFx();
@@ -398,6 +440,27 @@
       }
     }
     var i, a, bumping = false;
+    this.clock += dt;
+
+    // blocked arrows: forward (same ramp + cruise as a real exit) -> impact -> relaxed retreat
+    for (i = this.bp.length - 1; i >= 0; i--) {
+      a = this.bp[i]; a.t += dt; bumping = true;
+      if (a.hitT < 0) {
+        var rr = a.t < RAMP ? (a.t / RAMP) * (a.t / RAMP) * (3 - 2 * a.t / RAMP) : 1;
+        a.s += a.v * rr * dt;
+        if (a.s >= a.hit) {
+          a.s = a.hit; a.hitT = a.t;
+          a.back = clamp(0.26 + a.hit * 0.045, BACK_MIN, BACK_MAX);
+          this._impact(a);
+        }
+      } else {
+        var k = (a.t - a.hitT - 0.06) / a.back;             // short hold at the contact point
+        if (k > 0) {
+          if (k >= 1) { a.s = 0; a.phase = 0; a.hitT = -1; this.bp[i] = this.bp[this.bp.length - 1]; this.bp.pop(); }
+          else { var e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; a.s = a.hit * (1 - e); }
+        }
+      }
+    }
 
     // flying arrows: smooth ramp-in -> constant cruise -> gentle ease-out; removed only once fully off-screen
     if (this.mv.length) {
@@ -413,6 +476,11 @@
         var rm = 1;
         if (a.t < RAMP) { var r0 = a.t / RAMP; rm = r0 * r0 * (3 - 2 * r0); }
         a.s += a.v * rm * dec * dt;
+        while (a.vac < a.cells.length && a.s > a.cum[a.vac] + 0.5) {     // tail has fully left this cell -> its dot is born
+          var vc = a.cells[a.vac++];
+          this.dotB[vc[1] * b.cols + vc[0]] = this.clock;
+          this._dotsAnimUntil = this.clock + POP_T; this._needBoard = true;
+        }
         var done = false;
         if (a.s >= a.D) {                          // planned route finished: confirm against the CURRENT view
           pointAt(a, a.s, t);                      // tail position (on the straight run-out line)
@@ -427,6 +495,7 @@
         }
         if (done) {
           a.phase = 3;
+          while (a.vac < a.cells.length) { var vc2 = a.cells[a.vac++]; this.dotB[vc2[1] * b.cols + vc2[0]] = this.clock; this._dotsAnimUntil = this.clock + POP_T; }
           var last = this.mv.pop();
           if (last !== a) this.mv[i] = last;
           this._fxDirty = true;                    // one more pass to wipe the last frame
@@ -436,14 +505,13 @@
 
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
-      if (a.bump >= 0) { a.bump += dt; if (a.bump > BUMP_T) a.bump = -1; else bumping = true; }
       if (a.flash >= 0) { a.flash += dt; if (a.flash > BUMP_T) a.flash = -1; else bumping = true; }
     }
     this._bumping = bumping;
     if (this.hintT > 0) { this.hintT -= dt; if (this.hintT <= 0) this.hintId = -1; }
     if (this.rulerT > 0) this.rulerT = Math.max(0, this.rulerT - dt);
 
-    if (this.endTimer > 0 && this.mv.length === 0) {
+    if (this.endTimer > 0 && this.mv.length === 0 && this.bp.length === 0) {
       this.endTimer -= dt;
       if (this.endTimer <= 0) {
         if (this.endKind === 'win') {
@@ -618,13 +686,21 @@
     var x0 = -v.tx / sc, y0 = -v.ty / sc, x1 = (v.w - v.tx) / sc, y1 = (v.h - v.ty) / sc;
     var i, a, k, P = this.pal;
 
-    // empty-cell dots
+    // board dots (static ones in one batch, popping ones with a damped-spring radius)
     ctx.fillStyle = P['dot-empty'];
-    var dr = Math.max(0.05, 1.1 / sc), dd = this.dots;
+    var dr = Math.max(0.05, 1.1 / sc), DB = this.dotB, cl = this.clock;
+    var c0d = Math.max(0, Math.floor(x0)), c1d = Math.min(b.cols - 1, Math.floor(x1));
+    var r0d = Math.max(0, Math.floor(y0)), r1d = Math.min(b.rows - 1, Math.floor(y1));
     ctx.beginPath();
-    for (i = 0; i < dd.length; i += 2) {
-      if (dd[i] < x0 - 1 || dd[i] > x1 + 1 || dd[i + 1] < y0 - 1 || dd[i + 1] > y1 + 1) continue;
-      ctx.moveTo(dd[i] + dr, dd[i + 1]); ctx.arc(dd[i], dd[i + 1], dr, 0, 6.2832);
+    for (var ry = r0d; ry <= r1d; ry++) for (var cx = c0d; cx <= c1d; cx++) {
+      var bt = DB[ry * b.cols + cx];
+      if (bt < 0 && bt !== -POP_T) continue;
+      var age = bt === -POP_T ? POP_T : cl - bt;
+      if (age <= 0) continue;
+      var rad = dr;
+      if (age < POP_T) rad = dr * (1 - Math.exp(-7.5 * age) * Math.cos(15 * age));   // springy pop with overshoot
+      if (rad <= 0.002) continue;
+      ctx.moveTo(cx + 0.5 + rad, ry + 0.5); ctx.arc(cx + 0.5, ry + 0.5, rad, 0, 6.2832);
     }
     ctx.fill();
 
@@ -669,8 +745,8 @@
     var vis = this._vis; vis.length = 0;
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
-      if (!a.alive || a.phase !== 0) continue;
-      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) { vis.push(i); continue; }
+      if (!a.alive || a.phase > 1) continue;
+      if (a.phase === 1 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) { vis.push(i); continue; }
       if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
       ctx.moveTo(a.pts[0][0], a.pts[0][1]);
       for (k = 1; k < a.cells.length; k++) ctx.lineTo(a.pts[k][0], a.pts[k][1]);
@@ -680,7 +756,7 @@
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
       if (!a.alive || a.phase !== 0) continue;
-      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) continue;
+      if (a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) continue;
       if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
       headPath(ctx, a.hx, a.hy, AP.DX[a.dir], AP.DY[a.dir]);
     }
@@ -691,22 +767,21 @@
     for (k = 0; k < vis.length; k++) {
       a = b.arrows[vis[k]];
       var color = P.ink, ox = 0, oy = 0, glow = null;
-      if (a.hv > 0.003 && a.bump < 0 && a.flash < 0) { glow = { c: P.hint, w: 0.3, a: 0.22 * a.hv }; oy = -LIFT * a.hv; }
+      if (a.hv > 0.003 && a.phase === 0 && a.flash < 0) { glow = { c: P.hint, w: 0.3, a: 0.22 * a.hv }; oy = -LIFT * a.hv; }
       if (a.flash >= 0) {
         var f = 1 - a.flash / BUMP_T;
         color = P.warn; glow = { c: P.warn, w: 0.26, a: 0.2 * f };
       }
-      if (a.bump >= 0) {
-        var t = a.bump, o = 0.13 * Math.exp(-6 * t) * Math.sin(30 * t);
-        ox = AP.DX[a.dir] * o; oy = AP.DY[a.dir] * o;
-        color = P.danger; glow = { c: P.danger, w: 0.3, a: 0.24 * (1 - t / BUMP_T) };
+      if (a.phase === 1 && a.hitT >= 0) {                       // after impact: red tint that relaxes while backing off
+        var tt = clamp((a.t - a.hitT) / (a.back + 0.06), 0, 1);
+        color = mix(P.danger, P.ink, tt * tt); glow = { c: P.danger, w: 0.3, a: 0.26 * (1 - tt) };
       }
       if (vis[k] === this.hintId) {
         var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150);
         var fade = Math.min(1, this.hintT / 0.4);
         color = P.hint; glow = { c: P.glow, w: 0.5 + 0.25 * pulse, a: (0.4 + 0.3 * pulse) * fade };
       }
-      a.s = 0;
+      if (a.phase === 0) a.s = 0;
       this._drawOne(ctx, a, color, ox, oy, lw, glow);
     }
   };

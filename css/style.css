@@ -51,9 +51,9 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .screen {
   position: absolute; inset: 0; display: none; flex-direction: column;
   padding-left: var(--safe-l); padding-right: var(--safe-r);
-  animation: screenIn var(--t-panel) var(--ease-out);
+  animation: screenIn 380ms var(--ease-out);
 }
-@keyframes screenIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes screenIn { from { opacity: 0; transform: translateY(calc(var(--u) * 1.6)) scale(.992); } to { opacity: 1; transform: none; } }
 #app[data-screen="home"] #s-home,
 #app[data-screen="challenge"] #s-challenge,
 #app[data-screen="profile"] #s-profile,
@@ -188,13 +188,18 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .chip-count { justify-self: start; min-width: calc(var(--u) * 16); }
 .chip-count svg { width: calc(var(--u) * 5); height: calc(var(--u) * 5); }
 .chip-diff { justify-self: end; font-weight: 700; }
-/* lives: three capsules (no heart icons) */
-.lives { display: flex; gap: calc(var(--u) * 2); align-items: center; }
-.life { width: calc(var(--u) * 7.4); height: calc(var(--u) * 3); border-radius: 99px; background: var(--life); transition: background-color var(--t-ui) var(--ease-out), transform var(--t-ui) var(--ease-out), opacity var(--t-ui) var(--ease-out); }
-.life.off { background: var(--life-off); transform: scaleX(.78); }
-.life.pop { animation: lifePop 460ms var(--ease-out); }
-@keyframes lifePop { 0% { transform: scale(1); } 30% { transform: scale(1.3, 1.9); } 100% { transform: scaleX(.78); } }
-.lose-ico { width: calc(var(--u) * 16); height: calc(var(--u) * 16); margin: 0 auto calc(var(--u) * 1); color: var(--text-muted); }
+/* lives: three hearts (round-3 design) */
+.hearts { display: flex; gap: calc(var(--u) * 2); align-items: center; }
+.heart { width: calc(var(--u) * 7.6); height: calc(var(--u) * 7.125); flex: none; overflow: visible;
+  transition: transform var(--t-ui) var(--ease-spring), opacity var(--t-ui) var(--ease-out); }
+.heart .h-fill { fill: url(#gheart); transition: fill var(--t-ui) var(--ease-out); }
+.heart .h-shine { opacity: .55; transition: opacity var(--t-ui) var(--ease-out); }
+.heart.off { transform: scale(.86); }
+.heart.off .h-fill { fill: var(--life-off); }
+.heart.off .h-shine { opacity: 0; }
+.heart.pop { animation: heartPop 520ms var(--ease-out); }
+@keyframes heartPop { 0% { transform: scale(1); } 28% { transform: scale(1.5) rotate(-10deg); } 60% { transform: scale(.8) rotate(4deg); } 100% { transform: scale(.86); } }
+.heart.big { width: calc(var(--u) * 16); height: calc(var(--u) * 15); margin: 0 auto calc(var(--u) * 1); transform: none; }
 
 #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--board-bg); }
 #board { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -345,7 +350,7 @@ button:disabled { cursor: default; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .screen, .modal, .modal .card, .life.pop, .medal { animation: none; }
+  .screen, .modal, .modal .card, .heart.pop, .medal { animation: none; }
   .btn-primary, .btn-secondary, .pill-sm, .tool, .icon-btn, .round-btn, .day, .tab svg, .fit-btn svg, .switch i, .seg button { transition-duration: 1ms !important; }
 }
 
@@ -353,3 +358,50 @@ button:disabled { cursor: default; }
 .row.stack { flex-direction: column; align-items: stretch; justify-content: center; gap: calc(var(--u) * 2); padding: calc(var(--u) * 2.5) 0; }
 .row.stack .seg { display: flex; }
 .row.stack .seg button { flex: 1; justify-content: center; }
+
+/* =====================================================================
+   LANDSCAPE / TABLET (iPad landscape, rotated phones, desktop windows)
+   main.js sets data-orient="land" when the window is clearly wider than tall.
+   ===================================================================== */
+#app[data-orient="land"] .home-body {
+  display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto;
+  grid-template-areas: "card title" "card btns";
+  align-content: center; justify-content: center; column-gap: calc(var(--u) * 14); row-gap: calc(var(--u) * 7);
+  padding: calc(var(--safe-t) + var(--u) * 4) calc(var(--u) * 8) calc(var(--u) * 19 + var(--safe-b));
+}
+#app[data-orient="land"] .daily-card { grid-area: card; align-self: center; }
+#app[data-orient="land"] .game-title { grid-area: title; align-self: end; }
+#app[data-orient="land"] .home-btns { grid-area: btns; align-self: start; width: calc(var(--u) * 78); }
+#app[data-orient="land"] #s-challenge .col { width: min(100%, calc(var(--u) * 96)); }
+
+#app[data-orient="land"] .strip { display: none; }
+#app[data-orient="land"] .panel {
+  display: grid; border-radius: 0;
+  grid-template-columns: calc(var(--u) * 62) minmax(0, 1fr) calc(var(--u) * 30);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "top stage tools" "stats stage tools";
+  padding-bottom: var(--safe-b);
+}
+#app[data-orient="land"] .topbar { grid-area: top; width: auto; padding: calc(var(--safe-t) + var(--u) * 4) calc(var(--u) * 2) 0 calc(var(--u) * 3); }
+#app[data-orient="land"] .stats-row {
+  grid-area: stats; width: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  gap: calc(var(--u) * 4); padding: calc(var(--u) * 6) calc(var(--u) * 3);
+}
+#app[data-orient="land"] .chip-count { min-width: calc(var(--u) * 24); justify-content: center; }
+#app[data-orient="land"] #stage { grid-area: stage; }
+#app[data-orient="land"] .tools {
+  grid-area: tools; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(var(--u) * 7); padding: calc(var(--safe-t) + var(--u) * 4) 0 calc(var(--u) * 4);
+}
+#app[data-orient="land"] #dotmap { position: relative; top: auto; left: auto; width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
+/* pause / settings dialog in landscape: settings on the left, actions on the right (fits short screens) */
+#app[data-orient="land"] #m-pause .card {
+  width: min(100%, calc(var(--u) * 150)); display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--u) * 52);
+  column-gap: calc(var(--u) * 7); row-gap: calc(var(--u) * 3); align-content: start; align-items: start;
+}
+#app[data-orient="land"] #m-pause .card > h3 { grid-column: 1 / -1; }
+#app[data-orient="land"] #m-pause .card > [data-settings] { grid-column: 1; grid-row: 2 / span 4; }
+#app[data-orient="land"] #m-pause .card > button { grid-column: 2; }
+#app[data-orient="land"] .modal .row { min-height: calc(var(--u) * 10); }
+#app[data-orient="land"] .modal .row.stack { padding: calc(var(--u) * 1.5) 0; }
+#app[data-orient="land"] #s-profile .avatar { width: calc(var(--u) * 16); height: calc(var(--u) * 16); margin-bottom: calc(var(--u) * 3); }
