@@ -405,3 +405,6 @@ button:disabled { cursor: default; }
 #app[data-orient="land"] .modal .row { min-height: calc(var(--u) * 10); }
 #app[data-orient="land"] .modal .row.stack { padding: calc(var(--u) * 1.5) 0; }
 #app[data-orient="land"] #s-profile .avatar { width: calc(var(--u) * 16); height: calc(var(--u) * 16); margin-bottom: calc(var(--u) * 3); }
+/* the game screen only fades in: no transform, so the board and the flying-arrow layer always line up */
+#s-game { animation-name: screenFade; }
+@keyframes screenFade { from { opacity: 0; } to { opacity: 1; } }

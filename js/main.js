@@ -24,8 +24,15 @@
   function syncCanvas() {
     var w = stage.clientWidth, h = stage.clientHeight;
     if (w <= 0 || h <= 0) return;
-    var ar = app.getBoundingClientRect(), sr = stage.getBoundingClientRect();
-    var W = app.clientWidth, H = app.clientHeight, ox = Math.round((sr.left - ar.left) * 100) / 100, oy = Math.round((sr.top - ar.top) * 100) / 100;
+    // layout offset of the board inside #app. offsetLeft/Top ignore CSS transforms, so the value stays
+    // correct while a screen is still sliding in (getBoundingClientRect would capture the mid-animation
+    // position and flying arrows would jump away from the board when tapped).
+    var ox = 0, oy = 0, el = stage;
+    while (el && el !== app) { ox += el.offsetLeft + (el.clientLeft || 0); oy += el.offsetTop + (el.clientTop || 0); el = el.offsetParent; }
+    var scr = $('s-game'), still = scr.getAnimations ? scr.getAnimations().length === 0 : true;
+    if (el !== app || still) { var ar = app.getBoundingClientRect(), sr = stage.getBoundingClientRect(); ox = sr.left - ar.left; oy = sr.top - ar.top; }
+    var W = app.clientWidth, H = app.clientHeight;
+    ox = Math.round(ox * 100) / 100; oy = Math.round(oy * 100) / 100;
     var dm = $('dotmap'), dw = dm.clientWidth, dh = dm.clientHeight;
     var key = w + 'x' + h + '|' + W + 'x' + H + '|' + ox + ',' + oy + '|' + dw + 'x' + dh;
     if (key === game._key) return;
@@ -35,6 +42,8 @@
     game.setFx(W, H, ox, oy);
     if (dw > 0 && dh > 0) game.resizeDots(dw, dh);
   }
+
+  app.addEventListener('animationend', function () { if (app.dataset.screen === 'game') syncCanvas(); });
 
   /* ---------- game ---------- */
   var game = null;
