@@ -165,6 +165,7 @@
     var self = this, c = this.canvas;
     c.addEventListener('pointerdown', function (e) { self._down(e); });
     c.addEventListener('pointermove', function (e) { self._move(e); });
+    c.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse' && self.hooks.onHover) self.hooks.onHover(null); });
     c.addEventListener('pointerup', function (e) { self._up(e); });
     c.addEventListener('pointercancel', function (e) { self._up(e); });
     c.addEventListener('wheel', function (e) { self._wheel(e); }, { passive: false });
@@ -182,8 +183,10 @@
       this.panning = false;
       this.tapC = { t: performance.now() };
       this.lastT = e.timeStamp;
+      if (this.hooks.onDown) { var w0 = this.toWorld(x, y); this.hooks.onDown(w0[0], w0[1], this.scale, e.pointerType); }
     } else {
       this.tapC = null; this.panning = true;
+      if (this.hooks.onCancel) this.hooks.onCancel();
       this._initPinch();
     }
   };
@@ -199,7 +202,13 @@
 
   View.prototype._move = function (e) {
     var p = this.ptrs.get(e.pointerId);
-    if (!p) return;
+    if (!p) {
+      if (e.pointerType === 'mouse' && this.hooks.onHover) {
+        var rr = this._rect(), hw = this.toWorld(e.clientX - rr.left, e.clientY - rr.top);
+        this.hooks.onHover(hw[0], hw[1], this.scale);
+      }
+      return;
+    }
     var r = this._rect(), x = e.clientX - r.left, y = e.clientY - r.top;
     if (this.ptrs.size === 1) {
       if (!this.panning) {
@@ -207,6 +216,7 @@
         p.x = x; p.y = y;
         if (ddx * ddx + ddy * ddy < SLOP * SLOP) return;
         this.panning = true; this.tapC = null;
+        if (this.hooks.onCancel) this.hooks.onCancel();
         p.lx = p.sx; p.ly = p.sy; this.lastT = e.timeStamp;
       }
       var dx = x - p.lx, dy = y - p.ly;
@@ -241,6 +251,7 @@
     this.ptrs.delete(e.pointerId);
     try { this.canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     if (this.ptrs.size === 0) {
+      if (this.hooks.onUp) this.hooks.onUp(e.type === 'pointerup' && this.tapC && !this.panning);
       if (e.type === 'pointerup' && this.tapC && !this.panning && performance.now() - this.tapC.t < 700) {
         var w = this.toWorld(p.x, p.y);
         if (this.hooks.onTap) this.hooks.onTap(w[0], w[1], this.scale);

@@ -8,13 +8,15 @@
   'use strict';
   var AP = G.AP = G.AP || {};
 
-  // r,g,b,radius(as fraction of cell pitch)
+  // r,g,b,radius(as fraction of cell pitch). Colours are replaced from the theme (setPalette).
   var ST = [
     [240, 243, 248, 0.10],   // 0 empty cell
     [47, 134, 235, 0.36],    // 1 available
     [150, 160, 182, 0.30],   // 2 blocked
     [214, 221, 233, 0.17]    // 3 removed
   ];
+  var ACCENT = [47, 134, 235];
+  function rgb(c) { var m = /(\d+)[ ,]+(\d+)[ ,]+(\d+)/.exec(c || ''); return m ? [+m[1], +m[2], +m[3]] : null; }
   var TAU = 0.075;           // s, smoothing time constant (~250ms to settle)
 
   function DotMap(canvas) {
@@ -27,6 +29,14 @@
     this.pitch = 1; this.ox = 0; this.oy = 0;
     this.board = null;
   }
+
+  /* theme colours: p['map-empty'|'map-avail'|'map-blocked'|'map-removed'] = 'rgb(r,g,b)' */
+  DotMap.prototype.setPalette = function (p) {
+    var keys = ['map-empty', 'map-avail', 'map-blocked', 'map-removed'];
+    for (var i = 0; i < 4; i++) { var c = rgb(p[keys[i]]); if (c) { ST[i][0] = c[0]; ST[i][1] = c[1]; ST[i][2] = c[2]; } }
+    ACCENT = rgb(p['map-avail']) || ACCENT;
+    this.active = true; this.dirtyDots = true; this.needDraw = true;   // current colours ease to the new target
+  };
 
   DotMap.prototype.resize = function (w, h, dpr) {
     this.w = Math.max(1, w); this.h = Math.max(1, h); this.dpr = dpr;
@@ -108,7 +118,7 @@
       var x0 = Math.max(0, -view.tx / sc), y0 = Math.max(0, -view.ty / sc);
       var x1 = Math.min(this.cols, (view.w - view.tx) / sc), y1 = Math.min(this.rows, (view.h - view.ty) / sc);
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(47,134,235,.85)'; ctx.fillStyle = 'rgba(47,134,235,.08)';
+      ctx.lineWidth = 1.2; var A = ACCENT.join(','); ctx.strokeStyle = 'rgba(' + A + ',.85)'; ctx.fillStyle = 'rgba(' + A + ',.1)';
       var rx = this.ox + x0 * p, ry = this.oy + y0 * p, rw = (x1 - x0) * p, rh = (y1 - y0) * p;
       ctx.fillRect(rx, ry, rw, rh);
       ctx.strokeRect(rx + 0.6, ry + 0.6, Math.max(1, rw - 1.2), Math.max(1, rh - 1.2));

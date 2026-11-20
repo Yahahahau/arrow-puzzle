@@ -146,7 +146,7 @@
   }
 
   function label(n) {
-    return n < 10 ? 'ง่าย' : n < 30 ? 'ปานกลาง' : n < 60 ? 'ยาก' : 'ยากมาก';
+    return n < 10 ? 'easy' : n < 30 ? 'medium' : n < 60 ? 'hard' : 'expert';   // i18n key suffix: diff_<label>
   }
 
   var cache = {};
@@ -169,7 +169,7 @@
     var seed = parseInt(key.replace(/-/g, ''), 10) | 0;
     var p = params(18);
     var def = { cols: p.cols, rows: p.rows, arrows: generate(p.cols, p.rows, seed * 31 + 7, p) };
-    def.n = 0; def.key = key; def.label = 'ท้าทาย';
+    def.n = 0; def.key = key; def.label = 'daily';
     return def;
   }
 

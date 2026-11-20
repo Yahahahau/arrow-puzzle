@@ -6,7 +6,7 @@
   var mem = null;
 
   function defaults() {
-    return { level: 1, solved: 0, daily: {}, sound: true, vibrate: true, best: 1 };
+    return { level: 1, solved: 0, daily: {}, sound: true, music: false, vibrate: true, theme: 'light', lang: 'en', best: 1 };
   }
   function load() {
     if (mem) return mem;

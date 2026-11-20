@@ -16,17 +16,21 @@
   'use strict';
   var AP = G.AP = G.AP || {};
 
-  var INK = '#0e1650', RED = '#ef4444', ORANGE = '#f97316', BLUE = '#2f86eb', GOLD = '#ffb800', GREEN = '#22c55e';
+  // default (light) palette; replaced from the active theme through Game.setPalette
+  var PAL0 = { 'ink': '#0e1650', 'dot-empty': '#d3d9e4', 'hint': '#2f86eb', 'glow': '#ffb800', 'danger': '#ef4444', 'warn': '#f97316', 'ok': '#22c55e',
+    'confetti-1': '#2f86eb', 'confetti-2': '#ffb800', 'confetti-3': '#ef4444', 'confetti-4': '#22c55e', 'confetti-5': '#a855f7', 'confetti-6': '#0e1650' };
   var LW = 0.17;                 // line width (cells)
   var HEAD_LEN = 0.46, HEAD_HALF = 0.27;
-  var SPEED_PX = 1400;           // cruise speed in screen px / second at launch zoom (12% slower than v1: 1600)
-  var MIN_V = 14, MAX_V = 122;   // clamp in cells / second
+  var SPEED_PX = 1010;           // cruise speed in screen px / second at launch zoom (27% slower than round 3: 1400)
+  var MIN_V = 10, MAX_V = 90;    // clamp in cells / second
   var RAMP = 0.07;               // s: smoothstep velocity ramp at the start (no jump)
   var DEC_START = 0.6, DEC_DROP = 0.45;  // last 40% of the route eases down to 55% of cruise speed (never stops)
   var EXIT_MARGIN = 1.5;         // cells beyond the visible edge before the arrow is removed
   var BUMP_T = 0.5;
+  var HOVER_S = 1.035, PRESS_S = 0.93, LIFT = 0.05;   // arrow interaction: scale / lift (cells), render-only
+  var SPR_K = 380, SPR_C = 21;                        // spring stiffness / damping (slight overshoot)
   var HINT_T = 3.6, RULER_T = 4.2;
-  var HEARTS = 3, HINTS = 3, RULERS = 3;
+  var LIVES = 3, HINTS = 3, RULERS = 3;
   var MAX_DT = 0.1;
   var RING = 120;
 
@@ -60,15 +64,22 @@
     this.view = new AP.View(canvas, {
       onTap: function (x, y, s) { self._tap(x, y, s); },
       onWake: function () { self._kick(); },
-      onZoom: function (z) { if (self.cb.onZoom) self.cb.onZoom(z); }
+      onZoom: function (z) { if (self.cb.onZoom) self.cb.onZoom(z); },
+      onDown: function (x, y, s, type) { self._down(x, y, s, type); },
+      onUp: function (tap) { self._release(tap); },
+      onCancel: function () { self._release(false); },
+      onHover: function (x, y, s) { self._hover(x, y, s); }
     });
+    this.pal = {}; for (var pk in PAL0) this.pal[pk] = PAL0[pk];
+    this.cf = []; this.cfv = null; this.cfctx = null; 
+    this.hoverId = -1; this.pressId = -1; this._spring = 0;
     this.board = null; this.def = null;
     this.state = 'idle';
     this.paused = false;
-    this.hearts = HEARTS; this.hints = HINTS; this.rulers = RULERS;
+    this.lives = LIVES; this.hints = HINTS; this.rulers = RULERS;
     this.mv = [];                       // arrows currently flying (state is per arrow)
     this.hintId = -1; this.hintT = 0; this.rulerT = 0;
-    this.dots = []; this.parts = [];
+    this.dots = [];
     this.endTimer = 0; this.endKind = '';
     this.running = false; this.lastT = 0; this.raf = 0;
     this._tmp = [0, 0]; this._win = []; this._vis = [];
@@ -83,6 +94,14 @@
     this._onVis = function () { self.lastT = 0; if (!document.hidden && self.running) self._kick(); };
     document.addEventListener('visibilitychange', this._onVis);
   }
+
+  /* theme palette: strings 'rgb(...)'/'#hex' keyed like PAL0 (+ map-* for the dot map) */
+  Game.prototype.setPalette = function (p) {
+    for (var k in p) this.pal[k] = p[k];
+    if (this.dm) this.dm.setPalette(p);
+    this._needBoard = true; this._fxDirty = true; this._kick();
+  };
+  Game.prototype.setConfetti = function (canvas) { this.cfv = canvas; this.cfctx = canvas.getContext('2d', { alpha: true }); };
 
   /* optional overview dot map (canvas), kept in sync with the real grid */
   Game.prototype.attachDots = function (canvas) { this.dm = new AP.DotMap(canvas); this._dotsDirty = true; };
@@ -110,6 +129,7 @@
     this.fx.width = Math.max(1, Math.round(W * dpr));
     this.fx.height = Math.max(1, Math.round(H * dpr));
     this._fxDirty = true;
+    if (this.cfv) { this.cfv.width = this.fx.width; this.cfv.height = this.fx.height; }
     this._kick();
   };
 
@@ -118,13 +138,13 @@
     this.def = def;
     this.board = new AP.Board(def);
     this.state = 'play';
-    this.hearts = HEARTS; this.hints = HINTS; this.rulers = RULERS;
-    this.hintId = -1; this.hintT = 0; this.rulerT = 0; this.parts.length = 0;
+    this.lives = LIVES; this.hints = HINTS; this.rulers = RULERS;
+    this.hintId = -1; this.hintT = 0; this.rulerT = 0; this.hoverId = -1; this.pressId = -1; this._spring = 0;
     this.endTimer = 0; this.endKind = '';
     var i, a;
     for (i = 0; i < this.board.arrows.length; i++) {
       a = this.board.arrows[i];
-      a.phase = 0; a.t = 0; a.s = 0; a.v = 0; a.bump = -1; a.flash = -1;
+      a.phase = 0; a.t = 0; a.s = 0; a.v = 0; a.bump = -1; a.flash = -1; a.sc = 1; a.sv = 0; a.hv = 0; a.tg = 1;
       var mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
       for (var k = 0; k < a.cells.length; k++) {
         mnx = Math.min(mnx, a.cells[k][0]); mxx = Math.max(mxx, a.cells[k][0] + 1);
@@ -147,7 +167,8 @@
 
   /* stop every flying arrow immediately and clear the animation layer (restart / leave level) */
   Game.prototype.cancelFx = function () {
-    this.mv.length = 0; this.parts.length = 0;
+    this.mv.length = 0; this.cf.length = 0;
+    if (this.cfctx) { this.cfctx.setTransform(1, 0, 0, 1, 0, 0); this.cfctx.clearRect(0, 0, this.cfv.width, this.cfv.height); }
     this.endTimer = 0; this.endKind = '';
     this.fctx.setTransform(1, 0, 0, 1, 0, 0);
     this.fctx.clearRect(0, 0, this.fx.width, this.fx.height);
@@ -164,7 +185,7 @@
   Game.prototype.getInfo = function () {
     return {
       alive: this.board ? this.board.alive : 0, total: this.board ? this.board.arrows.length : 0,
-      hearts: this.hearts, hints: this.hints, rulers: this.rulers, state: this.state, moving: this.mv.length
+      lives: this.lives, hints: this.hints, rulers: this.rulers, state: this.state, moving: this.mv.length
     };
   };
   Game.prototype._emit = function () { if (this.cb.onState) this.cb.onState(this.getInfo()); };
@@ -202,6 +223,63 @@
     return best;
   };
 
+  /* ---------- hover / press (render-only springs: grid position and collision are never touched) ---------- */
+  Game.prototype._target = function (id, kind) {          // kind: 'hv' hover, 'pr' press
+    var b = this.board; if (!b) return;
+    var a, i;
+    if (kind === 'hv') {
+      if (id === this.hoverId) return;
+      if (this.hoverId >= 0) b.arrows[this.hoverId].tg = this.pressId === this.hoverId ? PRESS_S : 1;
+      this.hoverId = id;
+      if (id >= 0 && this.pressId !== id) b.arrows[id].tg = HOVER_S;
+    } else {
+      if (this.pressId >= 0 && this.pressId !== id) { a = b.arrows[this.pressId]; a.tg = this.hoverId === this.pressId ? HOVER_S : 1; }
+      this.pressId = id;
+      if (id >= 0) b.arrows[id].tg = PRESS_S;
+    }
+    this._spring = 1; this._needBoard = true; this._kick();
+  };
+  Game.prototype._canAct = function (id) {
+    var a = this.board.arrows[id];
+    return a.alive && a.phase === 0 && !this.paused && this.state === 'play';
+  };
+  Game.prototype._hover = function (x, y, s) {
+    if (!this.board || this.paused || this.state !== 'play' || this.view.ptrs.size) return;
+    var id = x === null || x === undefined ? -1 : this._pick(x, y, s);
+    if (id >= 0 && !this._canAct(id)) id = -1;
+    this.cv.style.cursor = id >= 0 ? 'pointer' : '';
+    this._target(id, 'hv');
+  };
+  Game.prototype._down = function (x, y, s, type) {
+    if (!this.board || this.paused || this.state !== 'play') return;
+    var id = this._pick(x, y, s);
+    if (id >= 0 && this._canAct(id)) this._target(id, 'pr');
+  };
+  Game.prototype._release = function (tap) {
+    if (!this.board || this.pressId < 0) return;
+    var id = this.pressId; this.pressId = -1;
+    var a = this.board.arrows[id];
+    a.tg = (this.hoverId === id && !tap) ? HOVER_S : 1;
+    this._spring = 1; this._needBoard = true; this._kick();
+  };
+  Game.prototype._stepSprings = function (dt) {
+    var b = this.board; if (!b || !this._spring) return false;
+    var any = false, n = b.arrows.length, i, a, k = 0;
+    var h = Math.min(dt, 1 / 30);
+    for (i = 0; i < n; i++) {
+      a = b.arrows[i];
+      if (!a.alive || a.phase !== 0) continue;
+      var d = a.sc - a.tg;
+      if (d > 0.0005 || d < -0.0005 || a.sv > 0.002 || a.sv < -0.002) {
+        a.sv += (-SPR_K * d - SPR_C * a.sv) * h; a.sc += a.sv * h; any = true;
+      } else { a.sc = a.tg; a.sv = 0; }
+      a.hv += ((a.tg > 1 ? 1 : 0) - a.hv) * (1 - Math.exp(-h * 14));
+      if (a.hv < 0.003 && a.tg <= 1) a.hv = 0; else any = true;
+    }
+    if (!any) this._spring = 0;
+    return any;
+  };
+
   /* ---------- actions ---------- */
   Game.prototype._tap = function (wx, wy, scale) {
     if (this.paused || this.state !== 'play') return;
@@ -213,7 +291,9 @@
     var blId = b.blockerId(a);
     if (blId < 0) {
       b.remove(id);                              // occupancy grid updated at launch
-      a.phase = 2; a.t = 0; a.s = 0;
+      a.phase = 2; a.t = 0; a.s = 0; a.tg = 1;   // the press spring flows into the movement (continues in the fx layer)
+      if (this.hoverId === id) this.hoverId = -1;
+      if (this.pressId === id) this.pressId = -1;
       var vw = this.view, sc = vw.scale, ox = vw.tx + this.fxX, oy = vw.ty + this.fxY, edge;
       a.v = clamp(SPEED_PX / sc, MIN_V, MAX_V);                // cruise speed, fixed for the whole flight
       if (a.dir === 'R') edge = (this.fxW - ox) / sc - a.hx;   // head -> visible edge, in cells
@@ -228,13 +308,13 @@
       if (b.alive === 0) { this.endKind = 'win'; this.endTimer = 0.3; }
       this._emit();
     } else {
-      a.bump = 0;
+      a.bump = 0; a.tg = 1;
       b.arrows[blId].flash = 0;
-      this.hearts--;
+      this.lives--;
       if (this.cb.onSfx) this.cb.onSfx('err');
       if (this.cb.onHaptic) this.cb.onHaptic();
-      if (this.hearts <= 0) { this.state = 'lost'; this.endKind = 'lose'; this.endTimer = 0.75; }
-      if (this.cb.onHeartLost) this.cb.onHeartLost(this.hearts);
+      if (this.lives <= 0) { this.state = 'lost'; this.endKind = 'lose'; this.endTimer = 0.75; }
+      if (this.cb.onLifeLost) this.cb.onLifeLost(this.lives);
       this._emit();
     }
     this._kick();
@@ -272,8 +352,8 @@
 
   /* ---------- loop ---------- */
   Game.prototype._animating = function () {
-    return this.mv.length > 0 || this.hintT > 0 || this.rulerT > 0 || this.parts.length > 0 ||
-      this.endTimer > 0 || this._bumping || (this.dm && this.dm.active) || this.view.tween !== null ||
+    return this.mv.length > 0 || this.hintT > 0 || this.rulerT > 0 ||
+      this.endTimer > 0 || this._bumping || this._spring || this.cf.length || (this.dm && this.dm.active) || this.view.tween !== null ||
       this.view.vx !== 0 || this.view.vy !== 0 || this.view.dirty || this.view.ptrs.size > 0;
   };
   Game.prototype._kick = function () {
@@ -285,10 +365,11 @@
     this.raf = 0;
     if (!this.running) return;
     var raw = this.lastT ? now - this.lastT : 0;
-    var dt = raw ? raw / 1000 : 1 / 60;
+    var dt = this.lastT ? raw / 1000 : 1 / 60;
     this.lastT = now;
     if (dt > MAX_DT) dt = MAX_DT;
-    if (this.paused) { this._renderBoard(); return; }
+    if (this.cf.length) { this._stepConfetti(dt); this._renderConfetti(); }
+    if (this.paused) { this._renderBoard(); if (this.cf.length && !this.raf) this.raf = requestAnimationFrame(this._loop); return; }
     if (raw) this._perf(raw);
     this._update(dt);
     if (this.dm) {
@@ -296,17 +377,26 @@
       var dmA = this.dm.step(dt);
       if (dmA || this._vd || this.dm.needDraw) this.dm.draw(this.view);
     }
-    var ba = this._bumping || this.hintT > 0 || this.rulerT > 0;
+    var ba = this._bumping || this.hintT > 0 || this.rulerT > 0 || this._spring;
     if (this._vd || this._needBoard || ba || this._prevBA) { this._renderBoard(); this._needBoard = false; }
     this._prevBA = ba;
-    if (this._fxDirty || this.mv.length || this.parts.length) this._renderFx();
-    if (this._animating()) this.raf = requestAnimationFrame(this._loop);
+    if (this._fxDirty || this.mv.length) this._renderFx();
+    if (this._animating() && !this.raf) this.raf = requestAnimationFrame(this._loop);
   };
 
   Game.prototype._update = function (dt) {
     var v = this.view;
     this._vd = v.update(dt);
     var b = this.board; if (!b) return;
+    if (this._spring) { this._stepSprings(dt); this._needBoard = true; }
+    for (var mi = 0; mi < this.mv.length; mi++) {          // flying arrows: finish the press/hover spring on the fx layer
+      var ma = this.mv[mi];
+      if (ma.sc !== 1 || ma.sv) {
+        var md = ma.sc - 1, hh = Math.min(dt, 1 / 30);
+        ma.sv += (-SPR_K * md - SPR_C * ma.sv) * hh; ma.sc += ma.sv * hh;
+        if (Math.abs(ma.sc - 1) < 0.0008 && Math.abs(ma.sv) < 0.003) { ma.sc = 1; ma.sv = 0; }
+      }
+    }
     var i, a, bumping = false;
 
     // flying arrows: smooth ramp-in -> constant cruise -> gentle ease-out; removed only once fully off-screen
@@ -352,7 +442,6 @@
     this._bumping = bumping;
     if (this.hintT > 0) { this.hintT -= dt; if (this.hintT <= 0) this.hintId = -1; }
     if (this.rulerT > 0) this.rulerT = Math.max(0, this.rulerT - dt);
-    if (this.parts.length) this._stepParts(dt);
 
     if (this.endTimer > 0 && this.mv.length === 0) {
       this.endTimer -= dt;
@@ -393,28 +482,66 @@
     }
   };
 
-  /* ---------- confetti (drawn on the fx layer, screen space) ---------- */
+  /* ---------- confetti: own full-screen canvas, drawn in screen space ----------
+   * ~60 pieces spawn staggered just above the top edge and fall with gravity -> per-piece terminal
+   * velocity, horizontal drift + flutter, rotation and a flip (cos) for a paper look. A piece is only
+   * removed once it is below the bottom edge (never faded out), so the whole shower lasts ~2.5-3.5 s.
+   * It keeps running while a modal is open (the game loop is paused, confetti is not). */
   Game.prototype._confetti = function () {
-    var cols = ['#2f86eb', '#ffb800', '#ef4444', '#22c55e', '#a855f7', '#0e1650'];
-    var w = this.fxW, h = this.fxH;
-    for (var i = 0; i < 70; i++) {
-      var ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.9, sp = (0.5 + Math.random()) * Math.min(w, h) * 1.1;
-      this.parts.push({
-        x: w / 2, y: h * 0.55, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-        r: 3 + Math.random() * 4, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 14,
-        c: cols[i % cols.length], life: 1.5 + Math.random() * 0.6, t: 0
+    var W = this.fxW, H = this.fxH, N = 60, i, rm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (rm) N = 24;
+    for (i = 0; i < N; i++) {
+      var T = 2.15 + Math.random() * 0.5;                   // seconds from spawn to leaving the screen
+      var size = 5 + Math.random() * 7;
+      this.cf.push({
+        x: Math.random() * W, y: -size * 3 - Math.random() * H * 0.08,
+        d: Math.random() * 0.75,                            // spawn delay (s)
+        vx: (Math.random() - 0.5) * 70, vy: 30 + Math.random() * 60,
+        vt: (H + size * 8) / (T - 0.36),                     // terminal fall speed (px/s)
+        w: size, h: size * (0.45 + Math.random() * 0.4),
+        rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 9,
+        ph: Math.random() * 6.28, fq: 2 + Math.random() * 3, am: 14 + Math.random() * 26,
+        fl: Math.random() * 6.28, ff: 4 + Math.random() * 5,
+        ci: i % 6, t: 0, a: 0, circ: Math.random() < 0.22
       });
     }
-    this._fxDirty = true;
+    this._kick();
   };
-  Game.prototype._stepParts = function (dt) {
-    var p = this.parts;
+  Game.prototype._stepConfetti = function (dt) {
+    var p = this.cf, H = this.fxH;
     for (var i = p.length - 1; i >= 0; i--) {
       var q = p[i];
-      q.t += dt; q.vy += 900 * dt; q.vx *= 0.99; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += q.vr * dt;
-      if (q.t > q.life) { p[i] = p[p.length - 1]; p.pop(); }
+      if (q.d > 0) { q.d -= dt; continue; }
+      q.t += dt;
+      q.vy += (q.vt - q.vy) * Math.min(1, 2.6 * dt);   // gravity eased into terminal velocity
+      q.y += q.vy * dt;
+      q.x += (q.vx + Math.cos(q.t * q.fq + q.ph) * q.am) * dt;
+      q.vx *= 1 - 0.25 * dt;
+      q.rot += q.vr * dt; q.fl += q.ff * dt;
+      q.a = Math.min(1, q.t / 0.18);
+      if (q.y - q.w > H + 8) { p[i] = p[p.length - 1]; p.pop(); }
     }
-    if (!p.length) this._fxDirty = true;
+    this._cfDirty = true;
+  };
+  Game.prototype._renderConfetti = function () {
+    var ctx = this.cfctx; if (!ctx) return;
+    var v = this.view, dpr = v.dpr, p = this.cf, P = this.pal, i;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.cfv.width, this.cfv.height);
+    if (!p.length) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (i = 0; i < p.length; i++) {
+      var q = p[i];
+      if (q.d > 0) continue;
+      ctx.globalAlpha = q.a;
+      ctx.fillStyle = P['confetti-' + (q.ci + 1)];
+      ctx.save();
+      ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.scale(1, Math.cos(q.fl) * 0.85 + 0.15 * (Math.cos(q.fl) < 0 ? -1 : 1));
+      if (q.circ) { ctx.beginPath(); ctx.arc(0, 0, q.w * 0.42, 0, 6.2832); ctx.fill(); }
+      else ctx.fillRect(-q.w / 2, -q.h / 2, q.w, q.h);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   };
 
   /* ---------- rendering ---------- */
@@ -445,6 +572,10 @@
     var dx = AP.DX[a.dir], dy = AP.DY[a.dir];
     ctx.save();
     ctx.translate(ox, oy);
+    if (a.sc !== 1) {                                  // press / hover spring: scale about the visible middle
+      var mx = (w[0] + w[n - 2]) / 2, my = (w[1] + w[n - 1]) / 2;
+      ctx.translate(mx, my); ctx.scale(a.sc, a.sc); ctx.translate(-mx, -my);
+    }
     if (glow) {
       ctx.strokeStyle = glow.c; ctx.fillStyle = glow.c; ctx.lineWidth = lw + glow.w;
       ctx.globalAlpha = glow.a;
@@ -473,18 +604,7 @@
       var k = v.dpr * v.scale, lw = Math.max(LW, 1.7 / v.scale);
       ctx.setTransform(k, 0, 0, k, v.dpr * (v.tx + this.fxX), v.dpr * (v.ty + this.fxY));
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
-      for (i = 0; i < this.mv.length; i++) this._drawOne(ctx, this.mv[i], INK, 0, 0, lw, null);
-    }
-    if (this.parts.length) {
-      ctx.setTransform(v.dpr, 0, 0, v.dpr, 0, 0);
-      for (i = 0; i < this.parts.length; i++) {
-        var q = this.parts[i];
-        ctx.save();
-        ctx.globalAlpha = clamp(1 - (q.t - q.life * 0.6) / (q.life * 0.4), 0, 1);
-        ctx.translate(q.x, q.y); ctx.rotate(q.rot);
-        ctx.fillStyle = q.c; ctx.fillRect(-q.r, -q.r * 0.5, q.r * 2, q.r);
-        ctx.restore();
-      }
+      for (i = 0; i < this.mv.length; i++) this._drawOne(ctx, this.mv[i], this.pal.ink, 0, 0, lw, null);
     }
   };
 
@@ -496,10 +616,10 @@
     v.apply(ctx);
     var sc = v.scale, lw = Math.max(LW, 1.7 / sc);
     var x0 = -v.tx / sc, y0 = -v.ty / sc, x1 = (v.w - v.tx) / sc, y1 = (v.h - v.ty) / sc;
-    var i, a, k;
+    var i, a, k, P = this.pal;
 
     // empty-cell dots
-    ctx.fillStyle = '#d3d9e4';
+    ctx.fillStyle = P['dot-empty'];
     var dr = Math.max(0.05, 1.1 / sc), dd = this.dots;
     ctx.beginPath();
     for (i = 0; i < dd.length; i += 2) {
@@ -524,6 +644,7 @@
 
     // ruler guides
     if (this.rulerT > 0) {
+      var P = this.pal;
       var ra = Math.min(1, this.rulerT / 0.5, (RULER_T - this.rulerT) / 0.15 + 0.01);
       ctx.save();
       ctx.lineCap = 'butt'; ctx.lineWidth = Math.max(0.07, 1.3 / sc);
@@ -533,8 +654,8 @@
         if (!a.alive) continue;
         var bl = b.blocker(a), dx = AP.DX[a.dir], dy = AP.DY[a.dir];
         var sx = a.hx + dx * HEAD_LEN, sy = a.hy + dy * HEAD_LEN, ex, ey;
-        if (bl) { ex = bl.c + 0.5 - dx * 0.5; ey = bl.r + 0.5 - dy * 0.5; ctx.strokeStyle = RED; }
-        else { ex = a.hx + dx * a.dEdge; ey = a.hy + dy * a.dEdge; ctx.strokeStyle = GREEN; }
+        if (bl) { ex = bl.c + 0.5 - dx * 0.5; ey = bl.r + 0.5 - dy * 0.5; ctx.strokeStyle = P.danger; }
+        else { ex = a.hx + dx * a.dEdge; ey = a.hy + dy * a.dEdge; ctx.strokeStyle = P.ok; }
         ctx.globalAlpha = 0.85 * ra;
         ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
       }
@@ -543,13 +664,13 @@
 
     // idle arrows: one batched pass
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineWidth = lw;
+    ctx.strokeStyle = P.ink; ctx.fillStyle = P.ink; ctx.lineWidth = lw;
     ctx.beginPath();
     var vis = this._vis; vis.length = 0;
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
       if (!a.alive || a.phase !== 0) continue;
-      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId) { vis.push(i); continue; }
+      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) { vis.push(i); continue; }
       if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
       ctx.moveTo(a.pts[0][0], a.pts[0][1]);
       for (k = 1; k < a.cells.length; k++) ctx.lineTo(a.pts[k][0], a.pts[k][1]);
@@ -559,7 +680,7 @@
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
       if (!a.alive || a.phase !== 0) continue;
-      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId) continue;
+      if (a.bump >= 0 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) continue;
       if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
       headPath(ctx, a.hx, a.hy, AP.DX[a.dir], AP.DY[a.dir]);
     }
@@ -569,20 +690,21 @@
     // flashing / hinted arrows
     for (k = 0; k < vis.length; k++) {
       a = b.arrows[vis[k]];
-      var color = INK, ox = 0, oy = 0, glow = null;
+      var color = P.ink, ox = 0, oy = 0, glow = null;
+      if (a.hv > 0.003 && a.bump < 0 && a.flash < 0) { glow = { c: P.hint, w: 0.3, a: 0.22 * a.hv }; oy = -LIFT * a.hv; }
       if (a.flash >= 0) {
         var f = 1 - a.flash / BUMP_T;
-        color = ORANGE; glow = { c: ORANGE, w: 0.3, a: 0.28 * f };
+        color = P.warn; glow = { c: P.warn, w: 0.26, a: 0.2 * f };
       }
       if (a.bump >= 0) {
-        var t = a.bump, o = 0.22 * Math.exp(-7 * t) * Math.sin(34 * t);
+        var t = a.bump, o = 0.13 * Math.exp(-6 * t) * Math.sin(30 * t);
         ox = AP.DX[a.dir] * o; oy = AP.DY[a.dir] * o;
-        color = RED; glow = { c: RED, w: 0.34, a: 0.3 * (1 - t / BUMP_T) };
+        color = P.danger; glow = { c: P.danger, w: 0.3, a: 0.24 * (1 - t / BUMP_T) };
       }
       if (vis[k] === this.hintId) {
         var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150);
         var fade = Math.min(1, this.hintT / 0.4);
-        color = BLUE; glow = { c: GOLD, w: 0.5 + 0.25 * pulse, a: (0.4 + 0.3 * pulse) * fade };
+        color = P.hint; glow = { c: P.glow, w: 0.5 + 0.25 * pulse, a: (0.4 + 0.3 * pulse) * fade };
       }
       a.s = 0;
       this._drawOne(ctx, a, color, ox, oy, lw, glow);

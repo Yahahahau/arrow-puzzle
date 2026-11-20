@@ -1,21 +1,34 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#f9fafc">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <title>Arrow Puzzle</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<!-- runs before first paint: applies the saved theme so the wrong theme never flashes -->
+<script>
+(function () {
+  try {
+    var s = JSON.parse(localStorage.getItem('arrow-puzzle.v1') || '{}'), r = document.documentElement;
+    if (s.theme === 'dark' || s.theme === 'custom') r.setAttribute('data-theme', s.theme);
+    var c = JSON.parse(localStorage.getItem('arrow-puzzle.custom') || 'null');
+    if (c) for (var k in c) r.style.setProperty(k, c[k]);
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="css/themes.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div id="app" data-screen="home">
 
   <!-- ================= HOME ================= -->
-  <section class="screen" id="s-home" aria-label="หน้าหลัก">
+  <section class="screen" id="s-home">
     <div class="bg-shapes" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="home-body">
       <div class="daily-card" id="daily-card">
@@ -28,33 +41,33 @@
           <circle cx="32" cy="35" r="13" fill="none" stroke="#d6cfc6" stroke-width="3.5"/>
           <path d="M32 27l2.6 5.4 5.9.8-4.3 4.1 1 5.9L32 40.4l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z" fill="#d6cfc6"/>
         </svg>
-        <div class="daily-lbl">คำท้าทายประจำวัน</div>
-        <div class="daily-date" id="daily-date">–</div>
-        <button class="pill-sm" id="btn-daily" data-action="play-daily">เล่น</button>
+        <div class="daily-lbl" data-i18n="daily_challenge">Daily Challenge</div>
+        <div class="daily-date" id="daily-date">&nbsp;</div>
+        <button class="pill-sm" id="btn-daily" data-action="play-daily" data-i18n="play">Play</button>
       </div>
       <h1 class="game-title">Arrow Puzzle</h1>
       <div class="home-btns">
         <button class="btn-primary" data-action="continue">
-          <span class="b1">เล่นเกมต่อไป</span>
-          <span class="b2" id="home-level">เลเวล 1</span>
+          <span class="b1" data-i18n="continue">Continue</span>
+          <span class="b2" id="home-level">Level 1</span>
         </button>
-        <button class="btn-secondary" data-action="restart-game">รีสตาร์ทเกม</button>
+        <button class="btn-secondary" data-action="restart-game" data-i18n="restart_game">Restart Game</button>
       </div>
     </div>
   </section>
 
-  <!-- ================= CHALLENGE ================= -->
-  <section class="screen" id="s-challenge" aria-label="คำท้า">
-    <div class="page-head"><h2>คำท้า</h2></div>
+  <!-- ================= CHALLENGES ================= -->
+  <section class="screen" id="s-challenge">
+    <div class="page-head"><h2 data-i18n="challenges">Challenges</h2></div>
     <div class="scroll">
       <div class="col">
         <div class="month-bar">
-          <button class="round-btn" data-action="month-prev" aria-label="เดือนก่อนหน้า">
-            <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <button class="round-btn" data-action="month-prev" data-i18n-aria="prev_month" aria-label="Previous month">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div class="month-title" id="month-title">–</div>
-          <button class="round-btn" data-action="month-next" id="btn-month-next" aria-label="เดือนถัดไป">
-            <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="month-title" id="month-title">&nbsp;</div>
+          <button class="round-btn" data-action="month-next" id="btn-month-next" data-i18n-aria="next_month" aria-label="Next month">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
         <div class="cal-week" id="cal-week"></div>
@@ -65,68 +78,64 @@
   </section>
 
   <!-- ================= PROFILE ================= -->
-  <section class="screen" id="s-profile" aria-label="ฉัน">
-    <div class="page-head"><h2>ฉัน</h2></div>
+  <section class="screen" id="s-profile">
+    <div class="page-head"><h2 data-i18n="profile">Profile</h2></div>
     <div class="scroll">
       <div class="col">
         <div class="avatar">
-          <svg viewBox="0 0 48 48"><circle cx="24" cy="18" r="9" fill="#fff"/><path d="M6 44c0-10 8-16 18-16s18 6 18 16z" fill="#fff"/></svg>
+          <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="18" r="9" fill="#fff"/><path d="M6 44c0-10 8-16 18-16s18 6 18 16z" fill="#fff"/></svg>
         </div>
         <div class="stats">
-          <div class="stat"><b id="st-level">1</b><span>เลเวลปัจจุบัน</span></div>
-          <div class="stat"><b id="st-solved">0</b><span>ด่านที่ผ่าน</span></div>
-          <div class="stat"><b id="st-daily">0</b><span>คำท้าที่ผ่าน</span></div>
+          <div class="stat"><b id="st-level">1</b><span data-i18n="st_level">Current Level</span></div>
+          <div class="stat"><b id="st-solved">0</b><span data-i18n="st_solved">Levels Solved</span></div>
+          <div class="stat"><b id="st-daily">0</b><span data-i18n="st_daily">Challenges Won</span></div>
         </div>
-        <div class="card-list">
-          <div class="row"><span>เสียง</span><button class="switch" data-action="toggle-sound" id="sw-sound-p" role="switch" aria-checked="true"><i></i></button></div>
-          <div class="row"><span>การสั่น</span><button class="switch" data-action="toggle-vibrate" id="sw-vib-p" role="switch" aria-checked="true"><i></i></button></div>
-        </div>
-        <button class="btn-secondary danger" data-action="reset-progress">ล้างความคืบหน้าทั้งหมด</button>
+        <div class="set-title" data-i18n="settings">Settings</div>
+        <div class="card-list" data-settings></div>
+        <button class="btn-secondary danger" data-action="reset-progress" data-i18n="reset_all">Reset All Progress</button>
       </div>
     </div>
   </section>
 
   <!-- ================= GAME ================= -->
-  <section class="screen" id="s-game" aria-label="เกม">
+  <section class="screen" id="s-game">
     <div class="panel">
       <header class="topbar col">
-        <button class="icon-btn" data-action="home" aria-label="กลับ">
-          <svg viewBox="0 0 24 24"><path d="M15 4.5L7.5 12 15 19.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button class="icon-btn" data-action="home" data-i18n-aria="home" aria-label="Home">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4.5L7.5 12 15 19.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <h2 id="g-title">เลเวล 1</h2>
-        <button class="icon-btn" data-action="pause" aria-label="ตั้งค่า">
+        <h2 id="g-title">Level 1</h2>
+        <button class="icon-btn" data-action="pause" data-i18n-aria="pause" aria-label="Pause">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.14 4.53 L10.44 2.12 L13.56 2.12 L13.86 4.53 A 7.7 7.7 0 0 1 15.97 5.40 L17.88 3.91 L20.09 6.12 L18.60 8.03 A 7.7 7.7 0 0 1 19.47 10.14 L21.88 10.44 L21.88 13.56 L19.47 13.86 A 7.7 7.7 0 0 1 18.60 15.97 L20.09 17.88 L17.88 20.09 L15.97 18.60 A 7.7 7.7 0 0 1 13.86 19.47 L13.56 21.88 L10.44 21.88 L10.14 19.47 A 7.7 7.7 0 0 1 8.03 18.60 L6.12 20.09 L3.91 17.88 L5.40 15.97 A 7.7 7.7 0 0 1 4.53 13.86 L2.12 13.56 L2.12 10.44 L4.53 10.14 A 7.7 7.7 0 0 1 5.40 8.03 L3.91 6.12 L6.12 3.91 L8.03 5.40 A 7.7 7.7 0 0 1 10.14 4.53 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="2"/></svg>
         </button>
       </header>
       <div class="stats-row col">
-        <div class="chip chip-count">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5L3.2 10.2c-.7.3-.7 1.3 0 1.5l6.2 2.2 2.2 6.2c.3.7 1.2.7 1.5 0L20.5 3.5z" fill="#5b667c"/></svg>
+        <div class="chip chip-count" data-i18n-aria="arrows_left" aria-label="Arrows left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5L3.2 10.2c-.7.3-.7 1.3 0 1.5l6.2 2.2 2.2 6.2c.3.7 1.2.7 1.5 0L20.5 3.5z" fill="currentColor"/></svg>
           <span id="g-count">0</span>
         </div>
-        <div class="hearts" id="g-hearts" aria-label="หัวใจ">
-          <svg class="heart" viewBox="0 0 32 30"><use href="#ic-heart"/></svg>
-          <svg class="heart" viewBox="0 0 32 30"><use href="#ic-heart"/></svg>
-          <svg class="heart" viewBox="0 0 32 30"><use href="#ic-heart"/></svg>
+        <div class="lives" id="g-lives" role="img" data-i18n-aria="lives" aria-label="Lives">
+          <i class="life"></i><i class="life"></i><i class="life"></i>
         </div>
-        <div class="chip chip-diff" id="g-diff">ง่าย</div>
+        <div class="chip chip-diff" id="g-diff">Easy</div>
       </div>
       <div id="stage">
-        <canvas id="board" aria-label="กระดานเกม"></canvas>
+        <canvas id="board" data-i18n-aria="board" aria-label="Game board"></canvas>
         <div id="dev" hidden>
           <pre id="dev-out">dev</pre>
           <div class="dev-btns">
             <button data-action="dev-grid" id="dv-grid">grid</button>
             <button data-action="dev-perf" id="dv-perf">perf</button>
-            <button data-action="dev-off" aria-label="close"><svg viewBox="0 0 24 24" width="10" height="10"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
+            <button data-action="dev-off" aria-label="close"><svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
           </div>
         </div>
-        <button class="fit-btn" id="btn-fit" data-action="fit" aria-label="ย่อให้พอดี">
-          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button class="fit-btn" id="btn-fit" data-action="fit" data-i18n-aria="fit" aria-label="Fit to screen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
       <footer class="tools">
-        <canvas id="dotmap" aria-label="แผนที่จุดแสดงตำแหน่งลูกศร" role="img"></canvas>
-        <button class="tool" data-action="hint" id="btn-hint" aria-label="คำใบ้">
+        <canvas id="dotmap" data-i18n-aria="dotmap" aria-label="Dot map of arrow positions" role="img"></canvas>
+        <button class="tool" data-action="hint" id="btn-hint" data-i18n-aria="hint" aria-label="Hint">
           <svg viewBox="0 0 48 56" aria-hidden="true">
             <defs><radialGradient id="gbulb" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#ffe46b"/><stop offset=".6" stop-color="#ffbe16"/><stop offset="1" stop-color="#f09a00"/></radialGradient></defs>
             <path d="M24 4C14.6 4 8 10.8 8 19.2c0 5.2 2.4 8.8 5.2 11.8 1.6 1.7 2.4 3.4 2.4 5.4V38h16.8v-1.6c0-2 .8-3.7 2.4-5.4 2.8-3 5.2-6.6 5.2-11.8C40 10.8 33.4 4 24 4z" fill="url(#gbulb)"/>
@@ -137,14 +146,12 @@
           </svg>
           <span class="badge" id="b-hint">3</span>
         </button>
-        <button class="tool" data-action="ruler" id="btn-ruler" aria-label="ไม้บรรทัด">
+        <button class="tool" data-action="ruler" id="btn-ruler" data-i18n-aria="ruler" aria-label="Ruler">
           <svg viewBox="0 0 48 56" aria-hidden="true">
             <defs><linearGradient id="grul" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8f86ff"/><stop offset="1" stop-color="#5546e6"/></linearGradient></defs>
             <g transform="rotate(35 24 28)">
               <rect x="14" y="2" width="20" height="52" rx="4" fill="url(#grul)"/>
-              <g stroke="#e9e6ff" stroke-width="2" stroke-linecap="round" opacity=".9">
-                <path d="M14 10h6M14 18h4M14 26h6M14 34h4M14 42h6"/>
-              </g>
+              <g stroke="#e9e6ff" stroke-width="2" stroke-linecap="round" opacity=".9"><path d="M14 10h6M14 18h4M14 26h6M14 34h4M14 42h6"/></g>
               <rect x="25" y="8" width="3.4" height="30" rx="1.7" fill="#fff" opacity=".35"/>
               <circle cx="24" cy="47" r="2.4" fill="#fff"/>
             </g>
@@ -157,18 +164,18 @@
   </section>
 
   <!-- ================= TAB BAR ================= -->
-  <nav id="tabbar" aria-label="เมนู">
+  <nav id="tabbar">
     <button class="tab" data-tab="home" data-action="tab">
-      <svg viewBox="0 0 32 32"><path d="M16 3.5L3 15.2c-.7.6-.3 1.8.7 1.8H6v10c0 .8.7 1.5 1.5 1.5H12v-8h8v8h4.5c.8 0 1.5-.7 1.5-1.5V17h2.3c1 0 1.4-1.2.7-1.8z" fill="currentColor"/></svg>
-      <span>หน้าหลัก</span>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3.5L3 15.2c-.7.6-.3 1.8.7 1.8H6v10c0 .8.7 1.5 1.5 1.5H12v-8h8v8h4.5c.8 0 1.5-.7 1.5-1.5V17h2.3c1 0 1.4-1.2.7-1.8z" fill="currentColor"/></svg>
+      <span data-i18n="tab_home">Home</span>
     </button>
     <button class="tab" data-tab="challenge" data-action="tab">
-      <svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="24" rx="6" fill="currentColor"/><rect x="9" y="2" width="3" height="7" rx="1.5" fill="currentColor"/><rect x="20" y="2" width="3" height="7" rx="1.5" fill="currentColor"/><circle cx="16" cy="18.5" r="7" fill="none" stroke="#fff" stroke-width="2"/><path d="M16 14.2l1.3 2.7 3 .4-2.2 2.1.5 3-2.6-1.4-2.6 1.4.5-3-2.2-2.1 3-.4z" fill="#fff"/></svg>
-      <span>คำท้า</span>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="24" rx="6" fill="currentColor"/><rect x="9" y="2" width="3" height="7" rx="1.5" fill="currentColor"/><rect x="20" y="2" width="3" height="7" rx="1.5" fill="currentColor"/><circle cx="16" cy="18.5" r="7" fill="none" stroke="#fff" stroke-width="2"/><path d="M16 14.2l1.3 2.7 3 .4-2.2 2.1.5 3-2.6-1.4-2.6 1.4.5-3-2.2-2.1 3-.4z" fill="#fff"/></svg>
+      <span data-i18n="tab_challenges">Challenges</span>
     </button>
     <button class="tab" data-tab="profile" data-action="tab">
-      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="currentColor"/><circle cx="16" cy="12.5" r="4.8" fill="#fff"/><path d="M6.6 25.2c1.6-4 5.3-6.2 9.4-6.2s7.8 2.2 9.4 6.2c-2.5 2.6-5.8 4-9.4 4s-6.9-1.4-9.4-4z" fill="#fff"/></svg>
-      <span>ฉัน</span>
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="currentColor"/><circle cx="16" cy="12.5" r="4.8" fill="#fff"/><path d="M6.6 25.2c1.6-4 5.3-6.2 9.4-6.2s7.8 2.2 9.4 6.2c-2.5 2.6-5.8 4-9.4 4s-6.9-1.4-9.4-4z" fill="#fff"/></svg>
+      <span data-i18n="tab_profile">Profile</span>
     </button>
   </nav>
 
@@ -178,63 +185,54 @@
   <!-- ================= MODALS ================= -->
   <div class="modal" id="m-pause" hidden>
     <div class="card">
-      <h3>ตั้งค่า</h3>
-      <div class="row"><span>เสียง</span><button class="switch" data-action="toggle-sound" id="sw-sound" role="switch" aria-checked="true"><i></i></button></div>
-      <div class="row"><span>การสั่น</span><button class="switch" data-action="toggle-vibrate" id="sw-vib" role="switch" aria-checked="true"><i></i></button></div>
-      <button class="btn-primary slim" data-action="resume">เล่นต่อ</button>
-      <button class="btn-secondary" data-action="restart-level">เริ่มด่านใหม่</button>
-      <button class="btn-secondary" data-action="home">กลับหน้าหลัก</button>
+      <h3 data-i18n="settings">Settings</h3>
+      <div data-settings></div>
+      <button class="btn-primary slim" data-action="resume" data-i18n="resume">Resume</button>
+      <button class="btn-secondary" data-action="restart-level" data-i18n="restart">Restart</button>
+      <button class="btn-secondary" data-action="home" data-i18n="home">Home</button>
     </div>
   </div>
 
   <div class="modal" id="m-win" hidden>
-    <div class="card center">
+    <div class="card">
       <div class="medal" aria-hidden="true">
         <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#ffc83d"/><circle cx="32" cy="32" r="22" fill="#ffb000"/><path d="M32 16l4.8 10 11 1.5-8 7.6 2 10.9L32 40.8l-9.8 5.2 2-10.9-8-7.6 11-1.5z" fill="#fff"/></svg>
       </div>
-      <h3 id="win-title">ผ่านด่าน!</h3>
+      <h3 id="win-title">Level Complete!</h3>
       <p id="win-sub"></p>
-      <button class="btn-primary slim" data-action="next" id="btn-next">ด่านถัดไป</button>
-      <button class="btn-secondary" data-action="restart-level">เล่นซ้ำ</button>
+      <button class="btn-primary slim" data-action="next" id="btn-next">Next Level</button>
+      <button class="btn-secondary" data-action="restart-level" data-i18n="replay">Replay</button>
     </div>
   </div>
 
   <div class="modal" id="m-lose" hidden>
-    <div class="card center">
-      <svg class="heart big" viewBox="0 0 32 30"><use href="#ic-heart-off"/></svg>
-      <h3>หัวใจหมดแล้ว</h3>
-      <p>ลองดูอีกครั้ง ใช้คำใบ้ช่วยได้นะ</p>
-      <button class="btn-primary slim" data-action="restart-level">เล่นใหม่</button>
-      <button class="btn-secondary" data-action="home">กลับหน้าหลัก</button>
+    <div class="card">
+      <svg class="lose-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <h3 data-i18n="out_of_lives">Out of Lives</h3>
+      <p data-i18n="out_of_lives_sub">Give it another go. Hints can help!</p>
+      <button class="btn-primary slim" data-action="restart-level" data-i18n="try_again">Try Again</button>
+      <button class="btn-secondary" data-action="home" data-i18n="home">Home</button>
     </div>
   </div>
 
   <div class="modal" id="m-confirm" hidden>
-    <div class="card center">
-      <h3 id="cf-title">ยืนยัน</h3>
+    <div class="card">
+      <h3 id="cf-title">Confirm</h3>
       <p id="cf-text"></p>
-      <button class="btn-primary slim" data-action="confirm-yes">ยืนยัน</button>
-      <button class="btn-secondary" data-action="confirm-no">ยกเลิก</button>
+      <button class="btn-primary slim" data-action="confirm-yes" data-i18n="confirm">Confirm</button>
+      <button class="btn-secondary" data-action="confirm-no" data-i18n="cancel">Cancel</button>
     </div>
   </div>
 
-  <!-- shared SVG symbols -->
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <defs>
-      <linearGradient id="gheart" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6666"/><stop offset="1" stop-color="#f02c2c"/></linearGradient>
-      <symbol id="ic-heart" viewBox="0 0 32 30">
-        <path d="M16 28.2C7 21.8 1.6 16.9 1.6 10.4 1.6 5.6 5.2 2 9.8 2c2.6 0 4.9 1.2 6.2 3.2C17.3 3.2 19.6 2 22.2 2c4.6 0 8.2 3.6 8.2 8.4 0 6.5-5.4 11.4-14.4 17.8z" fill="url(#gheart)"/>
-      </symbol>
-      <symbol id="ic-heart-off" viewBox="0 0 32 30">
-        <path d="M16 28.2C7 21.8 1.6 16.9 1.6 10.4 1.6 5.6 5.2 2 9.8 2c2.6 0 4.9 1.2 6.2 3.2C17.3 3.2 19.6 2 22.2 2c4.6 0 8.2 3.6 8.2 8.4 0 6.5-5.4 11.4-14.4 17.8z" fill="#dfe4ee"/>
-      </symbol>
-    </defs>
-  </svg>
+  <!-- confetti sits above everything (including modals) and never blocks input -->
+  <canvas id="confetti" aria-hidden="true"></canvas>
 </div>
 
 <script src="js/engine.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/levels.js"></script>
 <script src="js/storage.js"></script>
+<script src="js/theme.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/dotmap.js"></script>
 <script src="js/view.js"></script>

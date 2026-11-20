@@ -2,7 +2,7 @@
 (function (G) {
   'use strict';
   var AP = G.AP = G.AP || {};
-  var ctx = null, enabled = true;
+  var ctx = null, enabled = true, musicOn = false, mTimer = 0, mStep = 0, mNext = 0, mGain = null;
 
   function ensure() {
     if (ctx) { if (ctx.state === 'suspended') try { ctx.resume(); } catch (e) {} return ctx; }
@@ -23,9 +23,37 @@
     o.start(t0); o.stop(t0 + dur + 0.03);
   }
 
+
+  /* procedural background loop: a soft pentatonic arpeggio, scheduled a little ahead of time */
+  var SCALE = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+  var PATTERN = [0, 2, 4, 2, 5, 4, 2, 1, 0, 2, 4, 7, 5, 4, 2, 3];
+  function musicTick() {
+    if (!ctx || !musicOn || !enabled) return;
+    var step = 0.42;
+    if (mNext < ctx.currentTime) mNext = ctx.currentTime + 0.05;
+    while (mNext < ctx.currentTime + 0.6) {
+      var n = PATTERN[mStep % PATTERN.length];
+      var c = ctx, o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine'; o.frequency.value = SCALE[n];
+      g.gain.setValueAtTime(0.0001, mNext);
+      g.gain.exponentialRampToValueAtTime(0.035, mNext + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, mNext + step * 1.8);
+      o.connect(g); g.connect(c.destination); o.start(mNext); o.stop(mNext + step * 1.9);
+      if (mStep % 8 === 0) { var b = c.createOscillator(), bg = c.createGain(); b.type = 'triangle'; b.frequency.value = SCALE[0] / 2;
+        bg.gain.setValueAtTime(0.0001, mNext); bg.gain.exponentialRampToValueAtTime(0.04, mNext + 0.06); bg.gain.exponentialRampToValueAtTime(0.0001, mNext + step * 7);
+        b.connect(bg); bg.connect(c.destination); b.start(mNext); b.stop(mNext + step * 7.2); }
+      mNext += step; mStep++;
+    }
+  }
+  function musicSync() {
+    clearInterval(mTimer); mTimer = 0;
+    if (musicOn && enabled && ensure()) { mNext = 0; mTimer = setInterval(musicTick, 200); musicTick(); }
+  }
+
   AP.Audio = {
     unlock: function () { ensure(); },
-    setEnabled: function (v) { enabled = !!v; },
+    setEnabled: function (v) { enabled = !!v; musicSync(); },
+    setMusic: function (v) { musicOn = !!v; musicSync(); },
     play: function (name) {
       if (!enabled || !ensure()) return;
       var t = ctx.currentTime;
