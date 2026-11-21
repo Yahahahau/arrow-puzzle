@@ -407,6 +407,16 @@ button:disabled { cursor: default; }
 #wipe {
   position: absolute; inset: 0; z-index: 100; background: #000;
   visibility: hidden; pointer-events: none; will-change: transform;
-  transform: translate3d(100%, 0, 0); contain: strict;
+  transform: translate3d(100%, 0, 0); --wing: 0px;
 }
 #wipe.on { visibility: visible; pointer-events: auto; touch-action: none; }
+/* horizontal motion blur: soft gradient wings outside the solid core, scaled by speed in JS */
+#wipe .wing { position: absolute; top: 0; bottom: 0; width: var(--wing); display: none; pointer-events: none; will-change: transform; }
+#wipe.blur-x .wing { display: block; }
+#wipe .wl { right: 100%; transform-origin: 100% 50%;
+  background: linear-gradient(to left, #000 0%, rgba(0,0,0,.86) 18%, rgba(0,0,0,.55) 42%, rgba(0,0,0,.22) 68%, rgba(0,0,0,.06) 86%, rgba(0,0,0,0) 100%); }
+#wipe .wr { left: 100%; transform-origin: 0 50%;
+  background: linear-gradient(to right, #000 0%, rgba(0,0,0,.86) 18%, rgba(0,0,0,.55) 42%, rgba(0,0,0,.22) 68%, rgba(0,0,0,.06) 86%, rgba(0,0,0,0) 100%); }
+/* boot after an auto-update reload: start black (no flash), main.js then reveals with the wipe */
+html.wipe-boot body { background: #000; }
+html.wipe-boot #app { visibility: hidden; }

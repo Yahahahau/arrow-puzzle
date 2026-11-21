@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
+<meta name="app-version" content="20261121001821">
 <title>Arrow Puzzle</title>
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <!-- runs before first paint: applies the saved theme so the wrong theme never flashes -->
@@ -18,11 +19,16 @@
     if (s.theme === 'dark' || s.theme === 'custom') r.setAttribute('data-theme', s.theme);
     var c = JSON.parse(localStorage.getItem('arrow-puzzle.custom') || 'null');
     if (c) for (var k in c) r.style.setProperty(k, c[k]);
+    if (sessionStorage.getItem('arrow-puzzle.resume')) r.className += ' wipe-boot';   // reloaded onto a new version
   } catch (e) {}
 })();
 </script>
-<link rel="stylesheet" href="css/themes.css">
-<link rel="stylesheet" href="css/style.css">
+<!-- every asset url carries ?v=<app-version> so a new deploy never mixes with cached files -->
+<script>
+  window.AP_V = encodeURIComponent((document.querySelector('meta[name="app-version"]') || {}).content || 'dev');
+  document.write('<link rel="stylesheet" href="css/themes.css?v=' + AP_V + '"><link rel="stylesheet" href="css/style.css?v=' + AP_V + '">');
+</script>
+<noscript><link rel="stylesheet" href="css/themes.css"><link rel="stylesheet" href="css/style.css"></noscript>
 </head>
 <body>
 <div id="app" data-screen="home">
@@ -232,16 +238,10 @@
   <canvas id="confetti" aria-hidden="true"></canvas>
 </div>
 
-<script src="js/engine.js"></script>
-<script src="js/i18n.js"></script>
-<script src="js/levels.js"></script>
-<script src="js/storage.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/dotmap.js"></script>
-<script src="js/transition.js"></script>
-<script src="js/view.js"></script>
-<script src="js/game.js"></script>
-<script src="js/main.js"></script>
+<script>
+  ['js/engine.js', 'js/i18n.js', 'js/levels.js', 'js/storage.js', 'js/theme.js', 'js/audio.js', 'js/dotmap.js', 'js/transition.js', 'js/update.js', 'js/view.js', 'js/game.js', 'js/main.js'].forEach(function (f) {
+    document.write('<script src="' + f + '?v=' + AP_V + '"><\/script>');
+  });
+</script>
 </body>
 </html>

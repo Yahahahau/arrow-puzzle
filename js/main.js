@@ -160,7 +160,18 @@
   }
   /* every major scene change goes through the black wipe; the change itself runs while covered */
   var T = AP.Transition;
-  function wipe(fn) { return T.run(fn); }
+  var U = AP.Update, RESUME = 'arrow-puzzle.resume';
+  function wipe(fn) {
+    var upd = !!U.pending;                         // a new version is waiting: switch scene, then reload while black
+    return T.run(function () {
+      try { fn(); } finally { if (upd) U.reload(U.pending); }
+    }, { hold: upd });
+  }
+  function saveResume() {                         // where to land after an update reload
+    var r = { screen: app.dataset.screen };
+    if (r.screen === 'game') { r.mode = mode; r.level = curLevel; r.day = curDay; }
+    try { sessionStorage.setItem(RESUME, JSON.stringify(r)); } catch (e) {}
+  }
   function goHome() { wipe(function () { hideAll(); setScreen('home'); }); }
 
   /* ---------- home / challenge / profile ---------- */
@@ -379,6 +390,23 @@
   AP.Audio.setEnabled(Store.get().sound); AP.Audio.setMusic(Store.get().music);
   applySize();
   setScreen('home');
+  // came back from an auto-update reload: start covered, restore the screen, reveal with the wipe
+  var resume = null;
+  try { resume = JSON.parse(sessionStorage.getItem(RESUME) || 'null'); sessionStorage.removeItem(RESUME); } catch (e) {}
+  if (resume) {
+    T.cover();
+    document.documentElement.classList.remove('wipe-boot');
+    try {
+      if (resume.screen === 'game') { if (resume.mode === 'daily' && resume.day) startDaily(resume.day); else startLevel(resume.level || Store.get().level); }
+      else if (/^(home|challenge|profile)$/.test(resume.screen)) setScreen(resume.screen);
+    } catch (e) { setScreen('home'); }
+    T.reveal();
+  }
+  document.documentElement.classList.remove('wipe-boot');
+  U.start({
+    isSafe: function () { return app.dataset.screen !== 'game' && !anyModal() && !T.busy; },
+    beforeReload: saveResume
+  });
   if (/[?&]dev=1/.test(location.search)) setDev(true);
   if (/[?&]level=(\d+)/.test(location.search)) startLevel(parseInt(RegExp.$1, 10));
   window.ArrowPuzzle = { game: game, transition: function (fn, dir) { return AP.Transition.run(fn, { dir: dir }); }, startLevel: startLevel, startDaily: startDaily, setTheme: function (n) { Store.set({ theme: n }); Theme.set(n, true); syncSwitches(); },
