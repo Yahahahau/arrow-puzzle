@@ -6,6 +6,10 @@
   var app = $('app'), stage = $('stage'), canvas = $('board'), fxCanvas = $('fx'), cfCanvas = $('confetti');
 
   var I18n = AP.I18n, Theme = AP.Theme, t = I18n.t;
+  var STAR_ICON = '<svg class="ic star" viewBox="0 0 24 24" aria-hidden="true"><path class="o fy" stroke-width="2.4" d="M12 2.5 L14.5 9.1 L21.8 9.4 L16 13.9 L17.8 20.7 L12 17.2 L6.2 20.5 L7.8 14 L2.8 9.6 L9.4 9Z"/></svg>';
+
+  /* hand-drawn panels + 12 FPS outline frames for every [data-sk] element (js/sketch.js) */
+  if (AP.Sketch) AP.Sketch.init(app);
 
   var mode = 'level', curLevel = 1, curDay = null;
   var calY, calM, confirmCb = null;
@@ -92,7 +96,8 @@
   }
   function gameTexts(def) {
     $('g-title').textContent = mode === 'daily' ? t('daily_challenge') : t('level_n', { n: curLevel });
-    $('g-diff').textContent = t('diff_' + def.label);
+    $('g-diff-t').textContent = t('diff_' + def.label);
+    $('g-diff').setAttribute('data-lvl', { easy: 1, medium: 2, hard: 3, expert: 4, daily: 2 }[def.label] || 1);
   }
   function openGame(def) {
     hideAll(); lastAlive = -1;
@@ -179,7 +184,7 @@
     var s = Store.get(), key = Store.dayKey();
     $('home-level').textContent = t('level_n', { n: s.level });
     $('daily-date').textContent = I18n.date(key);
-    $('btn-daily').textContent = s.daily[key] ? t('play_again') : t('play');
+    $('btn-daily-t').textContent = s.daily[key] ? t('play_again') : t('play');
   }
   function refreshProfile() {
     var s = Store.get(), n = 0;
@@ -189,18 +194,27 @@
   }
   /* ---------- settings (rendered into every [data-settings] container) ---------- */
   var SW = [['sound', 'sound', 'toggle-sound'], ['music', 'music', 'toggle-music'], ['vibrate', 'vibration', 'toggle-vibrate']];
+  /* hand-drawn setting icons (thick outlines, flat fills; see .ic in style.css) */
+  var SET_IC = {
+    sound: '<path class="o fy" d="M3.6 9.2 L7.8 9.1 L12.6 4.8 L12.9 19.4 L7.9 15.1 L3.7 15.2 Z"/><path class="o n" d="M16 9 C17.4 10.6 17.4 13.6 16.1 15.2 M18.8 6.4 C21.6 9.4 21.6 14.8 18.9 17.8"/>',
+    music: '<path class="o n" d="M9.6 17.4 L9.4 5.2 L19.6 3.6 L19.8 15.6"/><path class="o fs" d="M9.5 17.3 C9.6 19.3 8 20.6 6.1 20.6 C4.3 20.5 3.4 19.4 3.5 18 C3.6 16.4 5.2 15.3 7.1 15.4 C8.4 15.4 9.4 16.1 9.5 17.3 Z M19.7 15.5 C19.8 17.5 18.2 18.8 16.3 18.8 C14.5 18.7 13.6 17.6 13.7 16.2 C13.8 14.6 15.4 13.5 17.3 13.6 C18.6 13.6 19.6 14.3 19.7 15.5 Z"/>',
+    vibrate: '<path class="o fs" d="M8.2 3.6 L15.9 3.4 L16.2 20.5 L8.4 20.7 Z"/><path class="o n" d="M4.6 7.4 L2.8 9.6 L4.8 12 L2.9 14.4 L4.7 16.6 M19.4 7.2 L21.2 9.5 L19.3 11.9 L21.1 14.3 L19.3 16.5"/>',
+    theme: '<path class="o fw" d="M12.3 3.4 C17.6 3.2 21 6.8 20.8 11.4 C20.6 14.4 18.4 15 16.6 14.6 C14.8 14.2 13.6 15.4 14.3 17.2 C15.1 19.2 13.8 20.8 11.8 20.6 C6.8 20.2 3.2 16.6 3.4 11.8 C3.6 7 7.2 3.6 12.3 3.4 Z"/><circle class="o fa" cx="8.2" cy="10.6" r="1.7" stroke-width="1.6"/><circle class="o fy" cx="12.1" cy="7.4" r="1.7" stroke-width="1.6"/><circle class="o fs" cx="16.3" cy="9.4" r="1.7" stroke-width="1.6"/>',
+    lang: '<path class="o fw" d="M3.6 4.6 L20.4 4.2 L20.6 15.4 L11.4 15.6 L6.6 20 L7 15.6 L3.8 15.7 Z"/><path class="o n" d="M8.2 12.6 L11.9 6.6 L15.6 12.4 M9.6 10.6 L14.3 10.5" stroke-width="2"/>'
+  };
+  function ic(k) { return '<svg class="ic ri" viewBox="0 0 24 24" aria-hidden="true">' + SET_IC[k] + '</svg>'; }
   function buildSettings() {
     var html = '', s = Store.get(), cur = Theme.current, lang = I18n.lang;
     SW.forEach(function (r) {
-      html += '<div class="row"><span>' + t(r[1]) + '</span><button class="switch" role="switch" aria-checked="' + !!s[r[0]] + '" aria-label="' + t(r[1]) +
-        '" data-action="' + r[2] + '" data-key="' + r[0] + '"><i></i></button></div>';
+      html += '<div class="row"><span class="rl">' + ic(r[0]) + '<span>' + t(r[1]) + '</span></span><button class="switch" data-sk="sw" role="switch" aria-checked="' + !!s[r[0]] + '" aria-label="' + t(r[1]) +
+        '" data-action="' + r[2] + '" data-key="' + r[0] + '"><i data-sk="knob" data-sk-amp="1.6"></i></button></div>';
     });
-    html += '<div class="row stack"><span>' + t('select_theme') + '</span><div class="seg" role="group" aria-label="' + t('select_theme') + '">';
+    html += '<div class="row stack"><span class="rl">' + ic('theme') + '<span>' + t('select_theme') + '</span></span><div class="seg" data-sk="seg" role="group" aria-label="' + t('select_theme') + '">';
     Theme.NAMES.forEach(function (n) {
-      html += '<button data-action="theme" data-v="' + n + '" aria-pressed="' + (n === cur) + '"><span class="sw sw-' + n + '"></span>' + t('theme_' + n) + '</button>';
+      html += '<button data-action="theme" data-sk="segb" data-v="' + n + '" aria-pressed="' + (n === cur) + '"><span class="sw sw-' + n + '"></span>' + t('theme_' + n) + '</button>';
     });
-    html += '</div></div><div class="row stack"><span>' + t('language') + '</span><div class="seg" role="group" aria-label="' + t('language') + '">';
-    for (var k in I18n.LANGS) html += '<button data-action="lang" data-v="' + k + '" aria-pressed="' + (k === lang) + '">' + I18n.LANGS[k] + '</button>';
+    html += '</div></div><div class="row stack"><span class="rl">' + ic('lang') + '<span>' + t('language') + '</span></span><div class="seg" data-sk="seg" role="group" aria-label="' + t('language') + '">';
+    for (var k in I18n.LANGS) html += '<button data-action="lang" data-sk="segb" data-v="' + k + '" aria-pressed="' + (k === lang) + '">' + I18n.LANGS[k] + '</button>';
     html += '</div></div>';
     var hosts = document.querySelectorAll('[data-settings]');
     for (var i = 0; i < hosts.length; i++) hosts[i].innerHTML = html;
@@ -240,7 +254,8 @@
       b.className = 'day'; b.textContent = i; b.dataset.key = key; b.dataset.action = 'day';
       if (key > todayKey) b.disabled = true;
       if (key === todayKey) b.classList.add('today');
-      if (s.daily[key]) { b.classList.add('done'); done++; }
+      b.setAttribute('data-sk', 'day');
+      if (s.daily[key]) { b.classList.add('done'); b.insertAdjacentHTML('beforeend', STAR_ICON); done++; }
       g.appendChild(b);
     }
     $('cal-note').textContent = t('month_done', { n: done });

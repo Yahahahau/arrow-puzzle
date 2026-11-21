@@ -6,7 +6,7 @@
   'use strict';
   var AP = G.AP = G.AP || {};
   var NAMES = ['light', 'dark', 'custom'];
-  var KEYS = ['ink', 'dot-empty', 'hint', 'glow', 'danger', 'warn', 'ok',
+  var KEYS = ['ink', 'arrow-fill', 'dot-empty', 'hint', 'glow', 'danger', 'warn', 'ok',
               'map-empty', 'map-avail', 'map-blocked', 'map-removed',
               'confetti-1', 'confetti-2', 'confetti-3', 'confetti-4', 'confetti-5', 'confetti-6'];
   var CUSTOM_KEY = 'arrow-puzzle.custom';

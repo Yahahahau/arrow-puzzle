@@ -17,9 +17,12 @@
   var AP = G.AP = G.AP || {};
 
   // default (light) palette; replaced from the active theme through Game.setPalette
-  var PAL0 = { 'ink': '#0e1650', 'dot-empty': '#d3d9e4', 'hint': '#2f86eb', 'glow': '#ffb800', 'danger': '#ef4444', 'warn': '#f97316', 'ok': '#22c55e',
-    'confetti-1': '#2f86eb', 'confetti-2': '#ffb800', 'confetti-3': '#ef4444', 'confetti-4': '#22c55e', 'confetti-5': '#a855f7', 'confetti-6': '#0e1650' };
-  var LW = 0.17;                 // line width (cells)
+  var PAL0 = { 'ink': '#111111', 'arrow-fill': '#ffd23f', 'dot-empty': '#cfcfc6', 'hint': '#7fd3ff', 'glow': '#14f05a', 'danger': '#ff3b3b', 'warn': '#ff8a00', 'ok': '#00c84a',
+    'confetti-1': '#14f05a', 'confetti-2': '#ffd23f', 'confetti-3': '#7fd3ff', 'confetti-4': '#ff4b4b', 'confetti-5': '#111111', 'confetti-6': '#ffffff' };
+  var LW = 0.17;                 // reference line width (cells) — used by the impact distance, unchanged
+  // cartoon look (render-only): bold ink outline around a bright body, irregular dart heads
+  var OW = 0.27, IW_K = 0.46;    // outline stroke width (cells) and the fill's share of it
+  var HEAD_HH = 0.3, NOTCH = 0.11, WOB = 0.028;
   var HEAD_LEN = 0.46, HEAD_HALF = 0.27;
   var SPEED_PX = 1010;           // cruise speed in screen px / second at launch zoom (27% slower than round 3: 1400)
   var MIN_V = 10, MAX_V = 90;    // clamp in cells / second
@@ -163,6 +166,9 @@
         mny = Math.min(mny, a.cells[k][1]); mxy = Math.max(mxy, a.cells[k][1] + 1);
       }
       a.bb = [mnx - 0.3, mny - 0.3, mxx + 0.3, mxy + 0.3];
+      // hand-drawn imperfection of the head: fixed per arrow (seeded), so it never flickers
+      var sd = (a.hx * 73.1 + a.hy * 37.7 + i * 11.3) % 1, wb = a.wb = [];
+      for (var q = 0; q < 6; q++) { sd = (sd * 9301 + 49297) % 233280 / 233280 || 0.37; wb.push((sd * 2 - 1) * WOB); }
     }
     // board dots: born (with a springy pop) on empty cells at level start, and on arrow cells only once
     // the arrow has really left them. dotB[cell] = birth time on this.clock, -1 = no dot.
@@ -613,13 +619,19 @@
   };
 
   /* ---------- rendering ---------- */
-  function headPath(ctx, hx, hy, dx, dy) {
-    var px = -dy, py = dx;
-    ctx.moveTo(hx + dx * HEAD_LEN, hy + dy * HEAD_LEN);
-    ctx.lineTo(hx - dx * 0.04 + px * HEAD_HALF, hy - dy * 0.04 + py * HEAD_HALF);
-    ctx.lineTo(hx - dx * 0.04 - px * HEAD_HALF, hy - dy * 0.04 - py * HEAD_HALF);
+  /* cartoon dart head: tip, two barbs and a notch, each nudged by the arrow's own seeded wobble.
+   * The tip (outline included) ends where the original head ended, so the art stays on the grid. */
+  function headPath(ctx, hx, hy, dx, dy, wb, ow) {
+    var px = -dy, py = dx, L = HEAD_LEN - ow * 0.32, w = wb || [0, 0, 0, 0, 0, 0];
+    var tx = hx + dx * L + px * w[0], ty = hy + dy * L + py * w[0];
+    var b = -0.07 + w[1], h1 = HEAD_HH + w[2], h2 = HEAD_HH + w[3];
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(hx + dx * (b + w[4]) + px * h1, hy + dy * (b + w[4]) + py * h1);
+    ctx.lineTo(hx + dx * NOTCH + px * w[5], hy + dy * NOTCH + py * w[5]);
+    ctx.lineTo(hx + dx * (b - w[4]) - px * h2, hy + dy * (b - w[4]) - py * h2);
     ctx.closePath();
   }
+  function ow(scale) { return Math.max(OW, 4.2 / scale); }
 
   /* visible window of the arrow polyline -> this._win (flat x,y list) */
   Game.prototype._window = function (a, s) {
@@ -635,30 +647,45 @@
     return n;
   };
 
-  Game.prototype._drawOne = function (ctx, a, color, ox, oy, lw, glow) {
+  /* one arrow with its own transform: fill colour, optional glow, hover tilt, press squash, blocked shake.
+   * Everything here is drawing only — a.pts / a.s / the grid are never modified. */
+  Game.prototype._drawOne = function (ctx, a, color, ox, oy, lw, glow, line) {
     var n = this._window(a, a.s), w = this._win, i;
-    var dx = AP.DX[a.dir], dy = AP.DY[a.dir];
+    var dx = AP.DX[a.dir], dy = AP.DY[a.dir], iw = lw * IW_K;
     ctx.save();
     ctx.translate(ox, oy);
-    if (a.sc !== 1) {                                  // press / hover spring: scale about the visible middle
-      var mx = (w[0] + w[n - 2]) / 2, my = (w[1] + w[n - 1]) / 2;
-      ctx.translate(mx, my); ctx.scale(a.sc, a.sc); ctx.translate(-mx, -my);
+    var mx = (w[0] + w[n - 2]) / 2, my = (w[1] + w[n - 1]) / 2;
+    if (a.sc !== 1 || a.hv > 0) {
+      ctx.translate(mx, my);
+      if (a.hv > 0) ctx.rotate(-0.045 * a.hv * (dx || dy));             // hover: small playful tilt
+      if (a.sc < 1) {                                                     // press: squash along the arrow, bulge across
+        var al = a.sc, ac = 1 + (1 - a.sc) * 0.7;
+        if (dx) ctx.scale(al, ac); else ctx.scale(ac, al);
+      } else if (a.sc !== 1) ctx.scale(a.sc, a.sc);                       // hover / spring overshoot: grow
+      ctx.translate(-mx, -my);
     }
-    if (glow) {
+    if (glow) {                                                           // illustrated highlight halo
       ctx.strokeStyle = glow.c; ctx.fillStyle = glow.c; ctx.lineWidth = lw + glow.w;
       ctx.globalAlpha = glow.a;
       ctx.beginPath(); ctx.moveTo(w[0], w[1]);
       for (i = 2; i < n; i += 2) ctx.lineTo(w[i], w[i + 1]);
       ctx.stroke();
-      ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy, a.wb, lw); ctx.fill(); ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw;
+    // ink outline
+    ctx.strokeStyle = line || this.pal.ink; ctx.fillStyle = line || this.pal.ink; ctx.lineWidth = lw;
     ctx.beginPath(); ctx.moveTo(w[0], w[1]);
     for (i = 2; i < n; i += 2) ctx.lineTo(w[i], w[i + 1]);
     ctx.stroke();
-    ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy); ctx.fill();
-    ctx.lineWidth = lw * 0.35; ctx.stroke();
+    ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy, a.wb, lw); ctx.fill();
+    ctx.lineWidth = lw - iw; ctx.stroke();
+    // bright body
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = iw;
+    ctx.beginPath(); ctx.moveTo(w[0], w[1]);
+    for (i = 2; i < n; i += 2) ctx.lineTo(w[i], w[i + 1]);
+    ctx.stroke();
+    ctx.beginPath(); headPath(ctx, w[n - 2], w[n - 1], dx, dy, a.wb, lw); ctx.fill();
     ctx.restore();
   };
 
@@ -669,10 +696,10 @@
     ctx.clearRect(0, 0, this.fx.width, this.fx.height);
     this._fxDirty = false;
     if (this.mv.length) {
-      var k = v.dpr * v.scale, lw = Math.max(LW, 1.7 / v.scale);
+      var k = v.dpr * v.scale, lw = ow(v.scale);
       ctx.setTransform(k, 0, 0, k, v.dpr * (v.tx + this.fxX), v.dpr * (v.ty + this.fxY));
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 1;
-      for (i = 0; i < this.mv.length; i++) this._drawOne(ctx, this.mv[i], this.pal.ink, 0, 0, lw, null);
+      for (i = 0; i < this.mv.length; i++) this._drawOne(ctx, this.mv[i], this.pal['arrow-fill'], 0, 0, lw, null);
     }
   };
 
@@ -682,7 +709,7 @@
     ctx.clearRect(0, 0, this.cv.width, this.cv.height);
     if (!b) return;
     v.apply(ctx);
-    var sc = v.scale, lw = Math.max(LW, 1.7 / sc);
+    var sc = v.scale, lw = ow(sc), iw = lw * IW_K;
     var x0 = -v.tx / sc, y0 = -v.ty / sc, x1 = (v.w - v.tx) / sc, y1 = (v.h - v.ty) / sc;
     var i, a, k, P = this.pal;
 
@@ -738,51 +765,58 @@
       ctx.restore();
     }
 
-    // idle arrows: one batched pass
+    // idle arrows: batched — all ink outlines first, then all bright bodies on top (arrows never overlap)
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.strokeStyle = P.ink; ctx.fillStyle = P.ink; ctx.lineWidth = lw;
-    ctx.beginPath();
-    var vis = this._vis; vis.length = 0;
+    var vis = this._vis, idle = this._idle || (this._idle = []); vis.length = 0; idle.length = 0;
     for (i = 0; i < b.arrows.length; i++) {
       a = b.arrows[i];
       if (!a.alive || a.phase > 1) continue;
       if (a.phase === 1 || a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) { vis.push(i); continue; }
       if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
-      ctx.moveTo(a.pts[0][0], a.pts[0][1]);
-      for (k = 1; k < a.cells.length; k++) ctx.lineTo(a.pts[k][0], a.pts[k][1]);
+      idle.push(a);
     }
-    ctx.stroke();
-    ctx.beginPath();
-    for (i = 0; i < b.arrows.length; i++) {
-      a = b.arrows[i];
-      if (!a.alive || a.phase !== 0) continue;
-      if (a.flash >= 0 || i === this.hintId || a.sc !== 1 || a.hv > 0) continue;
-      if (a.bb[2] < x0 || a.bb[0] > x1 || a.bb[3] < y0 || a.bb[1] > y1) continue;
-      headPath(ctx, a.hx, a.hy, AP.DX[a.dir], AP.DY[a.dir]);
+    var pass, body = function () {
+      ctx.beginPath();
+      for (var j = 0; j < idle.length; j++) {
+        var q = idle[j]; ctx.moveTo(q.pts[0][0], q.pts[0][1]);
+        for (var m = 1; m < q.cells.length; m++) ctx.lineTo(q.pts[m][0], q.pts[m][1]);
+      }
+      ctx.stroke();
+    }, heads = function () {
+      ctx.beginPath();
+      for (var j = 0; j < idle.length; j++) { var q = idle[j]; headPath(ctx, q.hx, q.hy, AP.DX[q.dir], AP.DY[q.dir], q.wb, lw); }
+    };
+    for (pass = 0; pass < 2; pass++) {
+      var col = pass ? P['arrow-fill'] : P.ink;
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = pass ? iw : lw;
+      body();
+      heads(); ctx.fill();
+      if (!pass) { ctx.lineWidth = lw - iw; ctx.stroke(); }
     }
-    ctx.fill();
-    ctx.lineWidth = lw * 0.35; ctx.stroke();
 
     // flashing / hinted arrows
     for (k = 0; k < vis.length; k++) {
       a = b.arrows[vis[k]];
-      var color = P.ink, ox = 0, oy = 0, glow = null;
-      if (a.hv > 0.003 && a.phase === 0 && a.flash < 0) { glow = { c: P.hint, w: 0.3, a: 0.22 * a.hv }; oy = -LIFT * a.hv; }
-      if (a.flash >= 0) {
+      var fillC = P['arrow-fill'], ox = 0, oy = 0, glow = null;
+      if (a.hv > 0.003 && a.phase === 0 && a.flash < 0) { glow = { c: P.glow, w: 0.2, a: 0.55 * a.hv }; oy = -LIFT * a.hv; }
+      if (a.flash >= 0) {                                       // the arrow that was hit: orange flash + wobble
         var f = 1 - a.flash / BUMP_T;
-        color = P.warn; glow = { c: P.warn, w: 0.26, a: 0.2 * f };
+        fillC = mix(P['arrow-fill'], P.warn, f); glow = { c: P.warn, w: 0.22, a: 0.35 * f };
+        var wf = 0.05 * f * Math.sin(a.flash * 48); ox += AP.DY[a.dir] * wf; oy += AP.DX[a.dir] * wf;
       }
-      if (a.phase === 1 && a.hitT >= 0) {                       // after impact: red tint that relaxes while backing off
-        var tt = clamp((a.t - a.hitT) / (a.back + 0.06), 0, 1);
-        color = mix(P.danger, P.ink, tt * tt); glow = { c: P.danger, w: 0.3, a: 0.26 * (1 - tt) };
+      if (a.phase === 1 && a.hitT >= 0) {                       // blocked: red, short illustrated shake, then relax while backing off
+        var since = a.t - a.hitT, tt = clamp(since / (a.back + 0.06), 0, 1);
+        fillC = mix(P.danger, P['arrow-fill'], tt * tt); glow = { c: P.danger, w: 0.24, a: 0.4 * (1 - tt) };
+        var sh = 0.085 * Math.exp(-since * 7) * Math.sin(since * 62);
+        ox += -AP.DY[a.dir] * sh; oy += AP.DX[a.dir] * sh;
       }
       if (vis[k] === this.hintId) {
         var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150);
         var fade = Math.min(1, this.hintT / 0.4);
-        color = P.hint; glow = { c: P.glow, w: 0.5 + 0.25 * pulse, a: (0.4 + 0.3 * pulse) * fade };
+        fillC = P.hint; glow = { c: P.glow, w: 0.26 + 0.16 * pulse, a: (0.45 + 0.3 * pulse) * fade };
       }
       if (a.phase === 0) a.s = 0;
-      this._drawOne(ctx, a, color, ox, oy, lw, glow);
+      this._drawOne(ctx, a, fillC, ox, oy, lw, glow);
     }
   };
 

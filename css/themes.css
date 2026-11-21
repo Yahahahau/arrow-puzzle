@@ -1,113 +1,139 @@
 /* Arrow Puzzle — themes.css
  * Every colour in the game comes from these CSS variables (UI, board, arrows, dot map).
+ * Visual language: hand-drawn cartoon — bold outlines (--line), flat bright fills, halftone dots.
  * To make your own look: edit the [data-theme="custom"] block below, or call
- *   ArrowPuzzle.setCustomTheme({ '--accent': '#e0457b', '--ink': '#3a1230' })
- * at runtime (saved in localStorage). The canvas colours (--ink, --dot-empty, --hint, ...)
+ *   ArrowPuzzle.setCustomTheme({ '--accent': '#e0457b', '--line': '#3a1230' })
+ * at runtime (saved in localStorage). The canvas colours (--ink, --arrow-fill, --dot-empty, --hint, ...)
  * are read from here too, so the board follows the theme. */
 
 :root, :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f9fafc;
-  --bg-shape: #f1f4f9;
+  /* sketch language */
+  --line: #111111;                 /* every hand-drawn outline */
+  --text-line: #111111;            /* outline around white display text */
+  --sh-ink: #111111;               /* cartoon drop shadows */
+  --ht-dot: rgba(17, 17, 17, .07); /* page halftone dots */
+  --ht-ink: rgba(0, 0, 0, .22);    /* halftone dots printed on top of coloured fills */
+  --green: #14f05a; --yellow: #ffd23f; --sky: #7fd3ff; --red: #ff4b4b;
+
+  --bg: #ffffff;
+  --bg-shape: #e6ffed;
   --surface: #ffffff;
-  --surface-2: #f3f6fb;
+  --surface-2: #f5f5ef;
   --panel: #ffffff;
-  --strip: #dde3ec;
+  --strip: #14f05a;
   --board-bg: #ffffff;
-  --text: #2f4366;
-  --text-strong: #0f1630;
-  --text-muted: #8a94a8;
-  --chip-1: #f4f6fb; --chip-2: #eaeef6; --chip-text: #596277;
-  --border: #e8ecf2;
-  --accent: #2f84ea; --accent-hi: #4093f0; --accent-lo: #2a7be0; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.58);
-  --accent-soft: #eef3fb;
-  --card-1: #72bcfa; --card-2: #3da1f6; --card-3: #0884ee;
-  --life: #ff6b57; --life-off: #dfe4ee;
-  --shadow-rgb: 80, 110, 160;
-  --overlay: rgba(14, 22, 80, .36);
-  --switch-off: #cfd6e3;
-  --tool-1: #ffffff; --tool-2: #f1f4fa;
-  --avatar-1: #8d98b3; --avatar-2: #6e7a98;
-  --hl: .34;                       /* strength of the glossy highlight band */
-  --done-1: #72bcfa; --done-2: #2f9bf4;
-  --tab-off: #8a93a8;
+  --text: #141414;
+  --text-strong: #0a0a0a;
+  --text-muted: #5f5f58;
+  --chip-1: #fff4c7; --chip-2: #fff4c7; --chip-text: #111111;
+  --border: #111111;
+  --accent: #14f05a; --accent-hi: #45ff80; --accent-lo: #00c84a; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.9);
+  --accent-soft: #e3ffe9;
+  --card-1: #ffd23f; --card-2: #ffd23f; --card-3: #ffb800;
+  --life: #14f05a; --life-off: #ffffff;
+  --shadow-rgb: 17, 17, 17;
+  --overlay: rgba(12, 12, 12, .52);
+  --switch-off: #ecece4;
+  --tool-1: #ffffff; --tool-2: #ffffff;
+  --avatar-1: #7fd3ff; --avatar-2: #7fd3ff;
+  --hl: 0;
+  --done-1: #14f05a; --done-2: #14f05a;
+  --tab-off: #6b6b64;
   /* board / canvas colours */
-  --ink: #0e1650;                  /* arrows */
-  --dot-empty: #d3d9e4;            /* empty-cell dots on the board */
-  --hint: #2f86eb; --glow: #ffb800;
-  --danger: #ef4444; --warn: #f97316; --ok: #22c55e;
-  --map-bg-1: #fafbfd; --map-bg-2: #f1f4f9;
-  --map-empty: #f0f3f8; --map-avail: #2f86eb; --map-blocked: #96a0b6; --map-removed: #d6dde9;
-  --confetti-1: #2f86eb; --confetti-2: #ffb800; --confetti-3: #ef4444; --confetti-4: #22c55e; --confetti-5: #a855f7; --confetti-6: #0e1650;
+  --ink: #111111;                  /* arrow outlines */
+  --arrow-fill: #ffd23f;           /* arrow body */
+  --dot-empty: #cfcfc6;            /* empty-cell dots on the board */
+  --hint: #7fd3ff; --glow: #14f05a;
+  --danger: #ff3b3b; --warn: #ff8a00; --ok: #00c84a;
+  --map-bg-1: #ffffff; --map-bg-2: #ffffff;
+  --map-empty: #ebebe4; --map-avail: #00d24e; --map-blocked: #111111; --map-removed: #f4f4ee;
+  --confetti-1: #14f05a; --confetti-2: #ffd23f; --confetti-3: #7fd3ff; --confetti-4: #ff4b4b; --confetti-5: #111111; --confetti-6: #ffffff;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1222;
-  --bg-shape: #131a30;
-  --surface: #1a2240;
-  --surface-2: #151c36;
-  --panel: #111832;
-  --strip: #080c19;
-  --board-bg: #0f1530;
-  --text: #c9d4f2;
-  --text-strong: #f2f5ff;
-  --text-muted: #8190b3;
-  --chip-1: #232c4d; --chip-2: #1d2542; --chip-text: #bcc8e8;
-  --border: #243055;
-  --accent: #4d9bff; --accent-hi: #66acff; --accent-lo: #3a86ea; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.62);
-  --accent-soft: #1f2a4d;
-  --card-1: #3a6fd0; --card-2: #2c58b4; --card-3: #20449a;
-  --life: #ff7a66; --life-off: #2a3354;
+  --line: #f2f0e6;                 /* chalk outlines on dark paper */
+  --text-line: #0b0b0b;
+  --sh-ink: #050506;
+  --ht-dot: rgba(242, 240, 230, .06);
+  --ht-ink: rgba(0, 0, 0, .3);
+  --green: #2bff6a; --yellow: #ffd23f; --sky: #6ccfff; --red: #ff5d5d;
+
+  --bg: #15161b;
+  --bg-shape: #1b2a21;
+  --surface: #24262e;
+  --surface-2: #1d1f26;
+  --panel: #1b1d23;
+  --strip: #1ed85c;
+  --board-bg: #1b1d23;
+  --text: #f2f0e6;
+  --text-strong: #ffffff;
+  --text-muted: #a6a59c;
+  --chip-1: #3a3423; --chip-2: #3a3423; --chip-text: #ffe8a0;
+  --border: #f2f0e6;
+  --accent: #22e862; --accent-hi: #4dff86; --accent-lo: #10b84a; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.9);
+  --accent-soft: #1d3a27;
+  --card-1: #e9b92c; --card-2: #e9b92c; --card-3: #d09a10;
+  --life: #22e862; --life-off: #2c2f38;
   --shadow-rgb: 0, 0, 0;
-  --overlay: rgba(2, 5, 18, .6);
-  --switch-off: #36426a;
-  --tool-1: #26305a; --tool-2: #1c2447;
-  --avatar-1: #44527e; --avatar-2: #2f3b63;
-  --hl: .16;
-  --done-1: #3f78d8; --done-2: #2c5cb8;
-  --tab-off: #6f7ea3;
-  --ink: #e4eaff;
-  --dot-empty: #2b3558;
-  --hint: #5eb0ff; --glow: #ffc83d;
-  --danger: #ff5d63; --warn: #ff9347; --ok: #3ddc84;
-  --map-bg-1: #161d3a; --map-bg-2: #121833;
-  --map-empty: #232c4c; --map-avail: #5eb0ff; --map-blocked: #5c6a92; --map-removed: #2d3860;
-  --confetti-1: #5eb0ff; --confetti-2: #ffc83d; --confetti-3: #ff5d63; --confetti-4: #3ddc84; --confetti-5: #c084fc; --confetti-6: #e4eaff;
+  --overlay: rgba(0, 0, 0, .62);
+  --switch-off: #3a3d47;
+  --tool-1: #2a2d36; --tool-2: #2a2d36;
+  --avatar-1: #3d8fbf; --avatar-2: #3d8fbf;
+  --hl: 0;
+  --done-1: #22e862; --done-2: #22e862;
+  --tab-off: #8e8d86;
+  --ink: #f2f0e6;
+  --arrow-fill: #ffd23f;
+  --dot-empty: #3a3d46;
+  --hint: #6ccfff; --glow: #2bff6a;
+  --danger: #ff5d5d; --warn: #ff9a3c; --ok: #2bff6a;
+  --map-bg-1: #24262e; --map-bg-2: #24262e;
+  --map-empty: #33363f; --map-avail: #2bff6a; --map-blocked: #f2f0e6; --map-removed: #2a2c34;
+  --confetti-1: #2bff6a; --confetti-2: #ffd23f; --confetti-3: #6ccfff; --confetti-4: #ff5d5d; --confetti-5: #f2f0e6; --confetti-6: #c58cff;
 }
 
-/* Custom theme: a warm "Sunset" palette. Edit freely (or override at runtime). */
+/* Custom theme: a warm "Sunset" sketchbook. Edit freely (or override at runtime). */
 :root[data-theme="custom"] {
   color-scheme: light;
-  --bg: #fff8f1;
-  --bg-shape: #fdeee0;
-  --surface: #ffffff;
-  --surface-2: #fff3e8;
-  --panel: #fffdfa;
-  --strip: #f2dcc8;
-  --board-bg: #fffdfa;
-  --text: #5a3a33;
-  --text-strong: #2e1614;
-  --text-muted: #a98b7e;
-  --chip-1: #fdf0e4; --chip-2: #f8e4d2; --chip-text: #7a584c;
-  --border: #f1e0d1;
-  --accent: #e8575a; --accent-hi: #f06c6c; --accent-lo: #d84649; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.66);
-  --accent-soft: #fdeceb;
-  --card-1: #ffb26b; --card-2: #ff8a5c; --card-3: #ec5f5c;
-  --life: #e8575a; --life-off: #efdccd;
-  --shadow-rgb: 150, 90, 60;
-  --overlay: rgba(60, 20, 20, .38);
-  --switch-off: #e6cfbd;
-  --tool-1: #ffffff; --tool-2: #fff0e2;
-  --avatar-1: #d29a86; --avatar-2: #b87a68;
-  --hl: .34;
-  --done-1: #ffa56b; --done-2: #ec6a5e;
-  --tab-off: #b99c8f;
-  --ink: #3a1d33;
-  --dot-empty: #efd9c6;
-  --hint: #e8575a; --glow: #ffb800;
-  --danger: #d63a3f; --warn: #f97316; --ok: #1fa971;
-  --map-bg-1: #fffaf5; --map-bg-2: #fdeee0;
-  --map-empty: #f6e6d8; --map-avail: #e8575a; --map-blocked: #c7a99a; --map-removed: #ecd8c8;
-  --confetti-1: #e8575a; --confetti-2: #ffb800; --confetti-3: #ff8a5c; --confetti-4: #1fa971; --confetti-5: #8e5cf6; --confetti-6: #3a1d33;
+  --line: #2b1410;
+  --text-line: #2b1410;
+  --sh-ink: #2b1410;
+  --ht-dot: rgba(43, 20, 16, .07);
+  --ht-ink: rgba(60, 10, 0, .22);
+  --green: #ff5a4f; --yellow: #ffc145; --sky: #ffb0a0; --red: #d6202a;
+
+  --bg: #fff6ea;
+  --bg-shape: #ffe4d2;
+  --surface: #fffdf8;
+  --surface-2: #fff0e0;
+  --panel: #fffdf8;
+  --strip: #ff5a4f;
+  --board-bg: #fffdf8;
+  --text: #2b1410;
+  --text-strong: #1c0b08;
+  --text-muted: #8a6458;
+  --chip-1: #ffe7b8; --chip-2: #ffe7b8; --chip-text: #2b1410;
+  --border: #2b1410;
+  --accent: #ff5a4f; --accent-hi: #ff7d6e; --accent-lo: #e0392f; --on-accent: #ffffff; --on-accent-muted: rgba(255,255,255,.9);
+  --accent-soft: #ffe2dc;
+  --card-1: #ffc145; --card-2: #ffc145; --card-3: #f29d00;
+  --life: #ff5a4f; --life-off: #fffdf8;
+  --shadow-rgb: 43, 20, 16;
+  --overlay: rgba(43, 14, 8, .5);
+  --switch-off: #f3e1cf;
+  --tool-1: #fffdf8; --tool-2: #fffdf8;
+  --avatar-1: #ffb0a0; --avatar-2: #ffb0a0;
+  --hl: 0;
+  --done-1: #ff5a4f; --done-2: #ff5a4f;
+  --tab-off: #a07e72;
+  --ink: #2b1410;
+  --arrow-fill: #ffc145;
+  --dot-empty: #ead5c2;
+  --hint: #ffb0a0; --glow: #ff5a4f;
+  --danger: #d6202a; --warn: #f27300; --ok: #1fa971;
+  --map-bg-1: #fffdf8; --map-bg-2: #fffdf8;
+  --map-empty: #f6e3d2; --map-avail: #ff5a4f; --map-blocked: #2b1410; --map-removed: #fbefe3;
+  --confetti-1: #ff5a4f; --confetti-2: #ffc145; --confetti-3: #ffb0a0; --confetti-4: #1fa971; --confetti-5: #2b1410; --confetti-6: #ffffff;
 }
