@@ -158,7 +158,10 @@
     for (var i = 0; i < m.length; i++) if (!m[i].hidden && !m[i].classList.contains('out')) return true;
     return false;
   }
-  function goHome() { hideAll(); setScreen('home'); }
+  /* every major scene change goes through the black wipe; the change itself runs while covered */
+  var T = AP.Transition;
+  function wipe(fn) { return T.run(fn); }
+  function goHome() { wipe(function () { hideAll(); setScreen('home'); }); }
 
   /* ---------- home / challenge / profile ---------- */
   function refreshHome() {
@@ -266,22 +269,24 @@
 
   /* ---------- actions ---------- */
   var actions = {
-    'play-daily': function () { startDaily(Store.dayKey()); },
-    'continue': function () { startLevel(Store.get().level); },
+    'play-daily': function () { wipe(function () { startDaily(Store.dayKey()); }); },
+    'continue': function () { wipe(function () { startLevel(Store.get().level); }); },
     'restart-game': function () {
       ask('restart_q', 'restart_q_text', function () {
-        Store.set({ level: 1, solved: 0 }); startLevel(1);
+        Store.set({ level: 1, solved: 0 }); wipe(function () { startLevel(1); });
       });
     },
-    'tab': function (el) { setScreen(el.dataset.tab); },
+    'tab': function (el) { if (el.dataset.tab !== app.dataset.screen) wipe(function () { setScreen(el.dataset.tab); }); },
     'home': goHome,
     'pause': function () { show('m-pause'); syncSwitches(); },
     'resume': function () { hide('m-pause'); game.setPaused(false); },
-    'restart-level': function () { hideAll(); game.load(game.def); game.setPaused(false); $('btn-fit').classList.remove('show'); },
+    'restart-level': function () { wipe(function () { hideAll(); game.load(game.def); game.setPaused(false); $('btn-fit').classList.remove('show'); }); },
     'next': function () {
-      hideAll();
-      if (mode === 'level') startLevel(curLevel + 1);
-      else setScreen('challenge');
+      wipe(function () {
+        hideAll();
+        if (mode === 'level') startLevel(curLevel + 1);
+        else setScreen('challenge');
+      });
     },
     'fit': function () { game.fit(); },
     'dev-grid': function () { devState.grid = !devState.grid; applyDev(); },
@@ -299,14 +304,14 @@
     },
     'month-prev': function () { calM--; if (calM < 0) { calM = 11; calY--; } renderCalendar(); },
     'month-next': function () { calM++; if (calM > 11) { calM = 0; calY++; } renderCalendar(); },
-    'day': function (el) { startDaily(el.dataset.key); },
+    'day': function (el) { wipe(function () { startDaily(el.dataset.key); }); },
     'confirm-yes': function () { var cb = confirmCb; confirmCb = null; hide('m-confirm'); if (isGame()) game.setPaused(anyModal()); if (cb) cb(); },
     'confirm-no': function () { confirmCb = null; hide('m-confirm'); if (isGame()) game.setPaused(anyModal()); }
   };
 
   document.addEventListener('click', function (e) {
     var el = e.target.closest ? e.target.closest('[data-action]') : null;
-    if (!el || el.disabled) return;
+    if (!el || el.disabled || T.busy) return;     // no input while a wipe is running
     var fn = actions[el.dataset.action];
     if (fn) { AP.Audio.play('tap'); fn(el); }
   });
@@ -376,6 +381,6 @@
   setScreen('home');
   if (/[?&]dev=1/.test(location.search)) setDev(true);
   if (/[?&]level=(\d+)/.test(location.search)) startLevel(parseInt(RegExp.$1, 10));
-  window.ArrowPuzzle = { game: game, startLevel: startLevel, startDaily: startDaily, setTheme: function (n) { Store.set({ theme: n }); Theme.set(n, true); syncSwitches(); },
+  window.ArrowPuzzle = { game: game, transition: function (fn, dir) { return AP.Transition.run(fn, { dir: dir }); }, startLevel: startLevel, startDaily: startDaily, setTheme: function (n) { Store.set({ theme: n }); Theme.set(n, true); syncSwitches(); },
     setCustomTheme: function (v) { Theme.setCustom(v); }, setLanguage: function (l) { Store.set({ lang: l }); I18n.setLang(l); refreshTexts(); } };
 })();

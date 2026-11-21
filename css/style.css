@@ -51,9 +51,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after {
 .screen {
   position: absolute; inset: 0; display: none; flex-direction: column;
   padding-left: var(--safe-l); padding-right: var(--safe-r);
-  animation: screenIn 380ms var(--ease-out);
 }
-@keyframes screenIn { from { opacity: 0; transform: translateY(calc(var(--u) * 1.6)) scale(.992); } to { opacity: 1; transform: none; } }
 #app[data-screen="home"] #s-home,
 #app[data-screen="challenge"] #s-challenge,
 #app[data-screen="profile"] #s-profile,
@@ -405,6 +403,10 @@ button:disabled { cursor: default; }
 #app[data-orient="land"] .modal .row { min-height: calc(var(--u) * 10); }
 #app[data-orient="land"] .modal .row.stack { padding: calc(var(--u) * 1.5) 0; }
 #app[data-orient="land"] #s-profile .avatar { width: calc(var(--u) * 16); height: calc(var(--u) * 16); margin-bottom: calc(var(--u) * 3); }
-/* the game screen only fades in: no transform, so the board and the flying-arrow layer always line up */
-#s-game { animation-name: screenFade; }
-@keyframes screenFade { from { opacity: 0; } to { opacity: 1; } }
+/* black wipe screen transition (js/transition.js) — covers the whole game viewport, above everything */
+#wipe {
+  position: absolute; inset: 0; z-index: 100; background: #000;
+  visibility: hidden; pointer-events: none; will-change: transform;
+  transform: translate3d(100%, 0, 0); contain: strict;
+}
+#wipe.on { visibility: visible; pointer-events: auto; touch-action: none; }
